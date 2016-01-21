@@ -15,6 +15,9 @@ Make sure you have [composer][1] installed, and then run:
 Usage
 -----
 
+To get the shape file, you need to download those from GRB first,  you need to select GrbGis (everything) and make sure to take the buffered ones (500m) and do NOT `clip` the set as this destroys all buildings that cross it.
+Download & unpack these files somewhere.
+
 This package will need the shape files indirectly. You have to import with [JOSM][3] first and save as OSM xml.
 Make sure all the files from GRB are there e.g:
 
