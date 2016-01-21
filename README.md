@@ -38,7 +38,7 @@ Send me an email or fork this and fix it(or suggest a fix) on [GitHub][2].
 Made at fruux
 -------------
 
-This library is being developed by [fruux](https://fruux.com/). Drop us a line for commercial services or enterprise support.
+This tool is being developed by [gplv2](http://byte-consult.be/). Drop us a line
 
 [1]: http://getcomposer.org/
 [2]: https://github.com/gplv2/grb2osm/issues/
