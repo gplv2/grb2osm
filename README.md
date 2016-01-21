@@ -77,6 +77,7 @@ Notes
 -----
 * Gba is not fully implemented yet, I create `building=garage1` and `building=garage2` for some source tags that should actually be manually reviewed as it's not always possible to just import them. They are `ingezonken garagetoegang` and,`verheven garagetoegang`, which doesn't really have a OSM ready tagging equivalent. 
 * Gbg addressing (and this tools intelligence) is not perfect.  For my very own building (which is = 2 GRB oidn's, 2 housenumbers and busnummers), grb isn't correct enough.  It's assigning all busnumbers to all numbers, while there are 8 in the other side, only 4 on my sides (appartment complex).  So it's `too wide` ,  Be careful to check existing addressing data in OSM.  and don't overwrite those by replacing the geometry and merging the data without attention for detail.  Hence, GRB addressing will try to avoid difficult ones.  Usually AGiv/CRab does a better job on those and combining these in JOSM as layers helps a lot to understand situations.
+* When this tool purged plenty of ways, it's not removing the nodes however, so you might endup with a bunch of stray nodes (unattached and not tagged in fact), JOSM has a autofix for this, it's very easy to fix this inside JOSM so the tool doesn't bother deleting those.
 
 Questions?
 ----------
