@@ -62,7 +62,7 @@ Ater importing the shape file, you need to save as OSM. Once you have this file,
 
 In the screenshot you see the result of custom mapCSS colouring styles, visually comfirming me that the address data is present in tags JOSM understands. Now you have a source layer you can start migrating buildings from.  You will need a few plugins/tools to do this:
 
-* Utils plugin [replace geometry tool][4] and probably depenancies
+* Utils plugin [replace geometry tool][4] and probably dependancies
 * [Terracer plugin][5]
 
 
