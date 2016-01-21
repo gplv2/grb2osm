@@ -35,8 +35,8 @@ Questions?
 Send me an email or fork this and fix it(or suggest a fix) on [GitHub][2].
 
 
-Made at fruux
--------------
+Made by
+-------
 
 This tool is being developed by [gplv2](http://byte-consult.be/). Drop us a line
 
