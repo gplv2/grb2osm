@@ -179,15 +179,15 @@ foreach ($result as $k => $v){
 
                 $todelete='verdieping';
                 if (($vv['attributes']['k'] == 'building') && ($vv['attributes']['v']==$todelete)) {
-                    $osmtool->logtrace(5, sprintf("[%s] - Adding useless trap to delete list.",__METHOD__));
+                    $osmtool->logtrace(5, sprintf("[%s] - Adding useless verdieping to delete list.",__METHOD__));
                     $to_delete_list[] = $k;
                     continue;
                 } 
 
                 /* Delete this type of building from the set */
-                $todelete='trap';
+                $todelete='gebouw afgezoomd met virtuele gevels';
                 if (($vv['attributes']['k'] == 'building') && ($vv['attributes']['v']==$todelete)) {
-                    $osmtool->logtrace(5, sprintf("[%s] - Adding useless building to delete list.",__METHOD__));
+                    $osmtool->logtrace(5, sprintf("[%s] - Adding useless virtual building to delete list.",__METHOD__));
                     $to_delete_list[] = $k;
                     continue;
                 } 
