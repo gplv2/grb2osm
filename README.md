@@ -18,6 +18,8 @@ Usage
 To get the shape file, you need to download those from [GRB][6] first,  you need to select GrbGis (everything) and make sure to take the buffered ones (500m) and do NOT `clip` the set as this destroys all buildings that cross it.
 Download & unpack these files somewhere.
 
+![Download stekene area data](/screenshots/grbdownloadstekene.png?raw=true "Getting GRB data on Stekene area ")
+
 This package will need the shape files indirectly. You have to import with [JOSM][3] first and save as OSM xml.
 Make sure all the files from GRB are there e.g:
 
@@ -84,8 +86,16 @@ Now you have this source data layer, you want to start downloading (Small) area'
 Notes
 -----
 * Adp is not fully implemented yet, I create `building=garage1` and `building=garage2` for some source tags that should actually be manually reviewed as it's not always possible to just import them. They are `ingezonken garagetoegang` and,`verheven garagetoegang`, which doesn't really have a OSM ready tagging equivalent. 
-* Gbg addressing (and this tools intelligence) is not perfect.  For my very own building (which is = 2 GRB oidn's, 2 housenumbers and busnummers), grb isn't correct enough.  It's assigning all busnumbers to all numbers, while there are 8 in the other side, only 4 on my sides (appartment complex).  So it's `too wide` ,  Be careful to check existing addressing data in OSM.  and don't overwrite those by replacing the geometry and merging the data without attention for detail.  Hence, GRB addressing will try to avoid difficult ones.  Usually AGiv/CRab does a better job on those and combining these in JOSM as layers helps a lot to understand situations.
+* Gbg addressing (and this tools intelligence) is not perfect.  
+* For my very own building (which is = 2 GRB oidn's, 2 housenumbers and busnummers), grb isn't correct enough.  It's assigning all busnumbers to all numbers, while there are 8 in the other side, only 4 on my sides (appartment complex).  So it's `too wide` ,  Be careful to check existing addressing data in OSM.  and don't overwrite those by replacing the geometry and merging the data without attention for detail.  Hence, GRB addressing will try to avoid difficult ones.  Usually AGiv/CRab does a better job on those and combining these in JOSM as layers helps a lot to understand situations.
+
+![Damstraat 100 bus4](/screenshots/addresesauto1.png?raw=true "Damstraat 100 bus 4 becomes 100-102 bus 4 - 102 number doesn't belong on right side building")
+
 * When this tool purged plenty of ways, it's not removing the nodes however, so you might endup with a bunch of stray nodes (unattached and not tagged in fact), JOSM has a autofix for this, it's very easy to fix this inside JOSM so the tool doesn't bother deleting those.
+
+* relations need special care
+
+![Crossing building type relation](/screenshots/relationcrossingbuildings.png?raw=true "Building relation add some complexity when resolving issues")
 
 Questions?
 ----------
