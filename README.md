@@ -84,6 +84,6 @@ This tool is being developed by [gplv2](http://byte-consult.be/). Drop us a line
 
 [1]: http://getcomposer.org/
 [2]: https://github.com/gplv2/grb2osm/issues/
-[3]: http://josm.org
+[3]: https://josm.openstreetmap.de/
 [4]: http://wiki.openstreetmap.org/wiki/JOSM/Plugins/utilsplugin2
 [5]: http://wiki.openstreetmap.org/wiki/JOSM/Plugins/Terracer
