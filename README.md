@@ -55,7 +55,7 @@ In the screenshot you see the result of custom mapCSS colouring styles, visually
 * [Terracer plugin][5]
 
 
-How to migrate in a nuttshell
+How to migrate in a nutshell
 -----------------------------
 
 Now you have this source data layer, you want to start downloading (Small) area's in JOSM from the target area.  Don't work too big as you want to keep track of what's migrated. I do it like this:
