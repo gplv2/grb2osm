@@ -31,7 +31,7 @@ Make sure all the files from GRB are there e.g:
 * Gbg23096B500.WOR
 
 Josm needs some of them to determine the coordinate system used.  Just the shape file alone will not work.
-Open up the .shp file in OSM, you should not see any warnings when all files are in place.
+Open up the .shp file in JOSM, you should not see any import warnings when all files are in place.
 
 And of course, the database files containing the addresses:
 
