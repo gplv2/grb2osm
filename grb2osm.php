@@ -408,7 +408,8 @@ class OsmTool {
 
         $this->logtrace(2, sprintf("[%s] - Trying to open DBase DB %s",__METHOD__,$database));
 
-        $this->db = new Table(dirname(__FILE__). '/' . $database, null, 'CP1252');
+        //$this->db = new Table(dirname(__FILE__). '/' . $database, null, 'CP1252');
+        $this->db = new Table($database, null, 'CP1252');
 
         if (!$this->db) {
             $this->logtrace(0, sprintf("[%s] - Problem opening DB %s",__METHOD__,$database));
@@ -451,6 +452,9 @@ class OsmTool {
             $this->counters['address_records']++;
         }
         if ($this->counters['knw_addressrecords'] + $this->counters['adp_addressrecords'] + $this->counters['gbg_addressrecords'] <= 0 ) {
+            $this->logtrace(3, sprintf("[%s] - gbg_addressrecords %s.",__METHOD__,$this->counters['gbg_addressrecords']));
+            $this->logtrace(3, sprintf("[%s] - adp_addressrecords %s.",__METHOD__,$this->counters['adp_addressrecords']));
+            $this->logtrace(3, sprintf("[%s] - knw_addressrecords %s.",__METHOD__,$this->counters['knw_addressrecords']));
             $this->logtrace(3, sprintf("[%s] - No addresses loaded at all, pointless to continue.",__METHOD__));
             print_r($cols);
             $this->logtrace(3, sprintf("[%s] - tip: mod the code to find the correct colname from the list above.",__METHOD__));
