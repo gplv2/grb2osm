@@ -31,6 +31,14 @@ Make sure all the files from GRB are there e.g:
 Josm needs some of them to determine the coordinate system used.  Just the shape file alone will not work.
 Open up the .shp file in OSM, you should not see any warnings when all files are in place.
 
+And of course, the database files containing the addresses:
+
+* TblAdpAdr23096B500.dbf
+* TblGbgAdr23096B500.dbf
+* TblKnwAdr23096B500.dbf
+
+This tool will accept multiple dbf files separated by a comma.`-f TblAdpAdr23096B500.dbf,TblGbgAdr23096B500.dbf` But it's not really usefull as there aren't any crossreferences between Gbg and other shape sources. This would however be usable once GRB's oidn references are present on OSM building but aren't addressed yet, those can be matched later on in 1 go.
+
 ![Shape after import](/screenshots/importedshapes.png?raw=true "Imported shapes")
 
 save this to a file, for example `saved_imported.osm`.
@@ -75,7 +83,7 @@ Now you have this source data layer, you want to start downloading (Small) area'
 
 Notes
 -----
-* Gba is not fully implemented yet, I create `building=garage1` and `building=garage2` for some source tags that should actually be manually reviewed as it's not always possible to just import them. They are `ingezonken garagetoegang` and,`verheven garagetoegang`, which doesn't really have a OSM ready tagging equivalent. 
+* Adp is not fully implemented yet, I create `building=garage1` and `building=garage2` for some source tags that should actually be manually reviewed as it's not always possible to just import them. They are `ingezonken garagetoegang` and,`verheven garagetoegang`, which doesn't really have a OSM ready tagging equivalent. 
 * Gbg addressing (and this tools intelligence) is not perfect.  For my very own building (which is = 2 GRB oidn's, 2 housenumbers and busnummers), grb isn't correct enough.  It's assigning all busnumbers to all numbers, while there are 8 in the other side, only 4 on my sides (appartment complex).  So it's `too wide` ,  Be careful to check existing addressing data in OSM.  and don't overwrite those by replacing the geometry and merging the data without attention for detail.  Hence, GRB addressing will try to avoid difficult ones.  Usually AGiv/CRab does a better job on those and combining these in JOSM as layers helps a lot to understand situations.
 * When this tool purged plenty of ways, it's not removing the nodes however, so you might endup with a bunch of stray nodes (unattached and not tagged in fact), JOSM has a autofix for this, it's very easy to fix this inside JOSM so the tool doesn't bother deleting those.
 
