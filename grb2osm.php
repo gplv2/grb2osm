@@ -308,10 +308,9 @@ if (isset($out_file)) {
         // Filter namespace from output
         $buffer=preg_replace('/^\s/', '  ', $buffer);
         $newbuffer=str_replace('xmlns="" ','',$buffer);
+        $buffer=preg_replace('/visible="true"/', 'version="1" timestamp="1970-01-01T00:00:01Z" changeset="1" visible="true"', $newbuffer);
 
-        $buffer=preg_replace('/\svisible="true"\/>/', ' version="1" timestamp="1970-01-01T00:00:01Z" changeset="1" visible="true"/>', $newbuffer);
-
-        fwrite($outhandle,$newbuffer);
+        fwrite($outhandle,$buffer);
     }
     fclose($handle);
     fclose($outhandle);
