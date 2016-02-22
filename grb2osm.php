@@ -21,7 +21,7 @@ $cliargs = array(
          ),
       'osmfile' => array(
          'short' => 'i',
-         'type' => 'required',
+         'type' => 'optional',
          'description' => "The name of the original .osm (xml) input file",
          'default' => ''
          ),
@@ -29,7 +29,7 @@ $cliargs = array(
          'short' => 'o',
          'type' => 'optional',
          'description' => "The name of the target .osm (xml) output file",
-         'default' => ''
+         'default' => 'database'
          ),
       'debug' => array(
          'short' => 'd',
@@ -53,6 +53,75 @@ if (empty($target_file)) {
 
 $osmtool = new OsmTool($options);
 $osmtool->init_dbf($target_file);
+
+if (isset($options['outfile']) && $options['outfile']=='database') {
+  $host = "localhost"; 
+  $user = "grb-data"; 
+  $pass = "snowball11.."; 
+  $db = "grb"; 
+
+  $con = pg_connect("host=$host dbname=$db user=$user password=$pass") or die ("Could not connect to server\n"); 
+
+  $adcounter=0;
+  foreach($osmtool->get_all_oidn_address() as $oidn => $val) {
+     $adcounter++;
+     // print_r($val);
+     $update="";
+
+     $blah = array();
+     $tag='busnr';
+     // $this->counters['counter_exist_addr']++
+     if(key_exists($tag, $val)) {
+        //$osmtool->counters['counter_exist_flats']++;
+        $blah['addr:flats']=$val[$tag];
+        //$osmtool->logtrace(5, sprintf("[%s] - address data: %s",__METHOD__, json_encode($adline)));
+     }
+
+     $tag='huisnr';
+     if(key_exists($tag, $val)) {
+         //$osmtool->counters['counter_exist_housenumber']++;
+         $blah['addr:housenumber']=$val[$tag];
+     }
+
+     $tag='straatnm';
+     if(key_exists($tag, $val)) {
+        //$osmtool->counters['counter_exist_street']++;
+        $blah['addr:street']=$val[$tag];
+     }
+     
+    /*
+    [huisnr] => 69
+    [straatnm] => Smissestraat
+    [hnrlabel] => 69
+*/
+    
+    foreach ($blah as $key => $set) {
+      $update.=sprintf("\"%s\" = '%s' ,", pg_escape_string($key), pg_escape_string($set));
+    }
+    $update=$osmtool->mychomp($update);
+
+    $query=sprintf("UPDATE planet_osm_polygon SET %s WHERE \"source:geometry:oidn\" = '%s'",$update,pg_escape_string($oidn));
+    //  UPDATE planet_osm_polygon SET "addr:housenumber" = 'Smissestraat'  WHERE "source:geometry:oidn" = '6433';
+
+    // echo $query;exit;
+    $osmtool->counters['update_to_db']++;
+    $result = pg_query($query); 
+    if(pg_affected_rows ( $result )) {
+       $osmtool->counters['updated_in_db']+=pg_affected_rows ( $result );
+       if($adcounter % 150 === 0 ) {
+           $osmtool->logtrace(3, sprintf("[%s] - Updated %d records in DB ...",__METHOD__, $osmtool->counters['updated_in_db']));
+           $osmtool->logtrace(3, sprintf("[%s] - QRY: %s",__METHOD__, $query));
+       }
+    }
+  }
+  exit;
+}
+
+if (isset($options['outfile']) && $options['outfile']=='database') {
+  // Load this stuff in the db
+  exit;
+}
+
 
 /* open the osm file */
 if (file_exists($osm_file)) {
@@ -360,6 +429,8 @@ class OsmTool {
             'counter_exist_street' => 0,
             'counter_exist_flats' => 0,
             'counter_exist_geometry' => 0,
+            'update_to_db' => 0,
+            'updated_in_db' => 0,
             'counter_exist_source' => 0,
             'counter_exist_housenumber' => 0,
             'double_street_oids' => array() 
@@ -402,6 +473,12 @@ class OsmTool {
         } else {
             return false; 
         }
+    }
+
+    public function get_all_oidn_address() {
+        if(!empty($this->addresses)) {
+         return($this->addresses);
+   }
     }
 
     private function open_db($database)  {
