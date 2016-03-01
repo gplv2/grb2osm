@@ -55,73 +55,134 @@ $osmtool = new OsmTool($options);
 $osmtool->init_dbf($target_file);
 
 if (isset($options['outfile']) && $options['outfile']=='database') {
-  $host = "localhost"; 
-  $user = "grb-data"; 
-  $pass = "snowball11.."; 
-  $db = "grb"; 
+   $host = "localhost"; 
+   $user = "grb-data"; 
+   $pass = "snowball11.."; 
+   $db = "grb"; 
 
-  $con = pg_connect("host=$host dbname=$db user=$user password=$pass") or die ("Could not connect to server\n"); 
+   $con = pg_connect("host=$host dbname=$db user=$user password=$pass") or die ("Could not connect to server\n"); 
 
-  $adcounter=0;
-  foreach($osmtool->get_all_oidn_address() as $oidn => $val) {
-     $adcounter++;
-     // print_r($val);
-     $update="";
+   $adcounter=0;
 
-     $blah = array();
-     $tag='busnr';
-     // $this->counters['counter_exist_addr']++
-     if(key_exists($tag, $val)) {
-        //$osmtool->counters['counter_exist_flats']++;
-        $blah['addr:flats']=$val[$tag];
-        //$osmtool->logtrace(5, sprintf("[%s] - address data: %s",__METHOD__, json_encode($adline)));
-     }
+   foreach($osmtool->get_all_oidn_address() as $oidn => $val) {
+      $range_update=false;
+      $adcounter++;
+      // print_r($val);
+      $update="";
 
-     $tag='huisnr';
-     if(key_exists($tag, $val)) {
+      $blah = array();
+      $tag='busnr';
+      // $this->counters['counter_exist_addr']++
+      if(key_exists($tag, $val) && strlen($val[$tag])) {
+         //$osmtool->counters['counter_exist_flats']++;
+         $blah['addr:flats']=$osmtool->number2range(trim($val[$tag]));
+         //$osmtool->logtrace(5, sprintf("[%s] - address data: %s",__METHOD__, json_encode($adline)));
+         // $osmtool->logtrace(3, sprintf("[%s] - Flats Range: %s ",__METHOD__, $blah['addr:flats']));
+         $pos = strpos($blah['addr:flats'], ';');
+         if ($pos !== false) {
+            $range_update=true;
+         }
+      }
+
+      $tag='huisnr';
+      if(key_exists($tag, $val) && strlen($val[$tag])) {
          //$osmtool->counters['counter_exist_housenumber']++;
-         $blah['addr:housenumber']=$val[$tag];
-     }
+         $blah['addr:housenumber']=$osmtool->number2range(trim($val[$tag]));
+         // $osmtool->logtrace(3, sprintf("[%s] - House Range: %s ",__METHOD__, $blah['addr:housenumber']));
+         $pos = strpos($blah['addr:housenumber'], ';');
+         if ($pos !== false) {
+            $range_update=true;
+         }
+      }
 
-     $tag='straatnm';
-     if(key_exists($tag, $val)) {
-        //$osmtool->counters['counter_exist_street']++;
-        $blah['addr:street']=$val[$tag];
-     }
-     
-    /*
-    [huisnr] => 69
-    [straatnm] => Smissestraat
-    [hnrlabel] => 69
-*/
-    
-    foreach ($blah as $key => $set) {
-      $update.=sprintf("\"%s\" = '%s' ,", pg_escape_string($key), pg_escape_string($set));
-    }
-    $update=$osmtool->mychomp($update);
+      $tag='straatnm';
+      if(key_exists($tag, $val) && strlen($val[$tag])) {
+         //$osmtool->counters['counter_exist_street']++;
+         $blah['addr:street']=trim($val[$tag]);
+      }
 
-    $query=sprintf("UPDATE planet_osm_polygon SET %s WHERE \"source:geometry:oidn\" = '%s'",$update,pg_escape_string($oidn));
-    //  UPDATE planet_osm_polygon SET "addr:housenumber" = 'Smissestraat'  WHERE "source:geometry:oidn" = '6433';
+      if($range_update || 1==1) {
+         foreach ($blah as $key => $set) {
+            $osmtool->logtrace(6, sprintf("[%s] blah[%s] = %s",__METHOD__,$key,$set));
+             $set = ltrim($set, ';');
+             $set = rtrim($set, ';');
+            $update.=sprintf("\"%s\" = '%s' ,", pg_escape_string($key), pg_escape_string($set));
+         }
+         $update=$osmtool->mychomp($update);
 
-    // echo $query;exit;
-    $osmtool->counters['update_to_db']++;
-    $result = pg_query($query); 
-    if(pg_affected_rows ( $result )) {
-       $osmtool->counters['updated_in_db']+=pg_affected_rows ( $result );
-       if($adcounter % 150 === 0 ) {
-           $osmtool->logtrace(3, sprintf("[%s] - Updated %d records in DB ...",__METHOD__, $osmtool->counters['updated_in_db']));
-           $osmtool->logtrace(3, sprintf("[%s] - QRY: %s",__METHOD__, $query));
-       }
-    }
-  }
-  exit;
+         $query=sprintf("UPDATE planet_osm_polygon SET %s WHERE \"source:geometry:oidn\" = '%s'",$update,pg_escape_string($oidn));
+         //  UPDATE planet_osm_polygon SET "addr:housenumber" = 'Smissestraat'  WHERE "source:geometry:oidn" = '6433';
+
+         echo $query.PHP_EOL;
+         $osmtool->counters['update_to_db']++;
+         $result = pg_query($query); 
+         if(pg_affected_rows ( $result )) {
+            $osmtool->counters['updated_in_db']+=pg_affected_rows ( $result );
+            if($adcounter % 150 === 0 ) {
+               $osmtool->logtrace(3, sprintf("[%s] - Updated %d records in DB ...",__METHOD__, $osmtool->counters['updated_in_db']));
+               $osmtool->logtrace(4, sprintf("[%s] - QRY: %s",__METHOD__, $query));
+            }
+         }
+      }
+   }
+exit;
+   // Fix up the DB (remove duplicate stuff)
+   // select osm_id,"source:geometry:oidn","source:geometry:date" from planet_osm_polygon where "source:geometry:oidn" = '1000000';
+   // Getting list of duplicate oidn's
+
+   // select "source:geometry:oidn", count(*) from planet_osm_polygon group by "source:geometry:oidn" HAVING count(*)>1 limit 10;
+   $query=sprintf("SELECT \"source:geometry:oidn\" from planet_osm_polygon group by \"source:geometry:oidn\" HAVING count(*)>1");
+   $osmtool->logtrace(3, sprintf("[%s] - QRY: %s",__METHOD__, $query));
+   $result = pg_query($query); 
+   $numrows = pg_num_rows($result);
+   $osmtool->logtrace(3, sprintf("[%s] - Found: %s",__METHOD__, $numrows));
+   if($numrows) {
+      while ($row = pg_fetch_assoc($result)) {
+         $grb_dates = array();
+         $qr=sprintf("SELECT osm_id,\"source:geometry:oidn\",\"source:geometry:date\" FROM planet_osm_polygon WHERE \"source:geometry:oidn\" = '%s'",pg_escape_string($row['source:geometry:oidn']));
+         $osmtool->logtrace(3, sprintf("[%s] - QRY: %s",__METHOD__, $qr));
+         $res = pg_query($qr); 
+         $numrows = pg_num_rows($res);
+         $osmtool->logtrace(3, sprintf("[%s] - Found: %s",__METHOD__, $numrows));
+
+         while ($r = pg_fetch_assoc($res)) {
+            $grb_dates[] = $r['source:geometry:date'];
+            $osm_ids[] = $r['osm_id'];
+         }
+         //pg_free_result ($r);
+
+         usort($grb_dates, 'cmp');
+         usort($osm_ids, 'cmp');
+
+         //print_r($grb_dates);
+         //print_r($osm_ids);exit;
+
+         $delqry=sprintf("DELETE FROM planet_osm_polygon WHERE \"source:geometry:oidn\" = '%s' AND \"source:geometry:date\" <> '%s'", pg_escape_string($row['source:geometry:oidn']), pg_escape_string(array_shift($grb_dates)));
+         $osmtool->logtrace(4, sprintf("[%s] - QRY: %s",__METHOD__, $delqry));
+         $delresult = pg_query($delqry); 
+         if(pg_affected_rows ( $delresult )) {
+            $osmtool->logtrace(3, sprintf("[%s] - Deleted: %s",__METHOD__, pg_affected_rows ( $delresult )));
+            $osmtool->counters['deleted_in_db']+=pg_affected_rows ( $delresult );
+         }
+         if (pg_affected_rows ( $delresult ) == 0 ) {
+            $delqry=sprintf("DELETE FROM planet_osm_polygon WHERE osm_id = '%s'", pg_escape_string(array_shift($osm_ids)));
+            $osmtool->logtrace(4, sprintf("[%s] - QRY: %s",__METHOD__, $delqry));
+            $delresult = pg_query($delqry); 
+            if(pg_affected_rows ( $delresult )) {
+               $osmtool->logtrace(3, sprintf("[%s] - Deleted: %s",__METHOD__, pg_affected_rows ( $delresult )));
+               $osmtool->counters['deleted_in_db']+=pg_affected_rows ( $delresult );
+            }
+         }
+
+      }
+   }
+   exit;
 }
 
 if (isset($options['outfile']) && $options['outfile']=='database') {
   // Load this stuff in the db
   exit;
 }
-
 
 /* open the osm file */
 if (file_exists($osm_file)) {
@@ -408,7 +469,7 @@ class OsmTool {
     private $last_error="";
 
     private $debug=1;
-    private $verbose=3;
+    private $verbose=4;
 
     private $addresses=array();
 
@@ -430,6 +491,7 @@ class OsmTool {
             'counter_exist_flats' => 0,
             'counter_exist_geometry' => 0,
             'update_to_db' => 0,
+            'deleted_in_db' => 0,
             'updated_in_db' => 0,
             'counter_exist_source' => 0,
             'counter_exist_housenumber' => 0,
@@ -478,7 +540,8 @@ class OsmTool {
     public function get_all_oidn_address() {
         if(!empty($this->addresses)) {
          return($this->addresses);
-   }
+         //return($this->addresses[4559386]);
+      }
     }
 
     private function open_db($database)  {
@@ -530,6 +593,7 @@ class OsmTool {
             }
             $this->counters['address_records']++;
         }
+
         if ($this->counters['knw_addressrecords'] + $this->counters['adp_addressrecords'] + $this->counters['gbg_addressrecords'] <= 0 ) {
             $this->logtrace(3, sprintf("[%s] - gbg_addressrecords %s.",__METHOD__,$this->counters['gbg_addressrecords']));
             $this->logtrace(3, sprintf("[%s] - adp_addressrecords %s.",__METHOD__,$this->counters['adp_addressrecords']));
@@ -551,7 +615,7 @@ class OsmTool {
          */
         foreach ($addresses as $k => $v) {
             if (is_array($v) && count($v)> 1) {
-                $this->logtrace(4, sprintf("[%s] - Multi records found for building.",__METHOD__));
+                $this->logtrace(5, sprintf("[%s] - Multi records found for building.",__METHOD__));
                 $streetname = null;
 
                 $hse = array (
@@ -649,7 +713,10 @@ class OsmTool {
         }
         $this->logtrace(3, sprintf("[%s] - Purged 'nvt' values .",__METHOD__));
 
+         //print_r($addresses[4938126]);//exit;
+         //print_r($addresses[4559386]);exit;
         //print_r($addresses);exit;
+        //return($addresses[4559386]);
         return($addresses);
     }
 
@@ -722,6 +789,157 @@ class OsmTool {
         }
         return $string;
     }
+
+    static public function number2range($housenumber) {
+       $numbers = preg_split('/;/', $housenumber, -1, PREG_SPLIT_NO_EMPTY);
+       asort($numbers);
+       natsort($numbers);
+       $numbers=array_values($numbers);
+
+       $hexes= array();
+       $output = array();
+
+       $alfa = array();
+       $nume = array();
+
+       $first = $last = null;
+
+       foreach ($numbers as $this_number) {
+          // filter out numbers with dot in
+          $pos = strpos($this_number, '.');
+          if ($pos !== false) {
+             continue;
+          }
+          // filter out numbers with / in
+          $pos = strpos($this_number, '/');
+          if ($pos !== false) {
+             continue;
+          }
+
+          // filter out leading zeros
+          $this_number = ltrim($this_number, '0');
+
+          if (ctype_digit($this_number)) {
+             $nume[]=$this_number;
+          } elseif(ctype_alnum($this_number)) {
+             $alfa[]=$this_number;
+          } else {
+             // drop whatever else 
+          }
+       }
+
+       foreach ($nume as $this_number) {
+          if ($first === null) {
+             $first = $last = $this_number;
+          } 
+          if ($last < $this_number - 1) {
+             if(is_numeric($this_number)) {
+                $output[] = $first == $last ? $first : $first . '-' . $last;
+             }
+             $first = $last = $this_number;
+          } else {
+             $last = $this_number;
+          }
+       }
+       $output[] = $first == $last ? $first : $first . '-' . $last;
+
+       foreach ($alfa as $this_number) {
+          if (!is_integer($this_number)) {
+             $this_number=trim($this_number);
+
+             if (preg_match("/([0-9]+)([A-Z+])/ui", $this_number, $match)) {
+                if(isset($match[1])) {
+                   if(!isset($hexes[$match[1]],$hexes)) {
+                      $hexes[$match[1]]=$match[2];
+                   } else {
+                      $hexes[$match[1]].=';'.$match[2];
+                   }
+                }
+             }
+          }
+       }
+
+       $res=array();
+
+       foreach ($hexes as $k => $v) {
+          $ranges=array();
+          $chars = preg_split('/;/', $v, -1, PREG_SPLIT_NO_EMPTY);
+          $first = $last = null;
+          foreach ($chars as $char) {
+             // echo "ORD : (".$char .  ") -> ". ordutf8(strtoupper($char)) . " / " . utf8chr(ordutf8(strtoupper($char)))  . PHP_EOL;
+             $this_char=ordutf8(strtoupper($char));
+
+             if ($first === null) {
+                $first = $last = $this_char;
+             } 
+             if ($last < $this_char - 1) {
+                $ranges[] = $first == $last ? $first : $first . '-' . $last;
+                $first = $last = $this_char;
+             } else {
+                $last = $this_char;
+             }
+          }
+          $ranges[] = $first == $last ? $first : $first . '-' . $last;
+          $res[$k]=$ranges;
+       }
+
+       $numstr="";
+       $nnum=array();
+       foreach($res as $number => $ranges) {
+          foreach($ranges as $k => $range) {
+             $newnumbers=array();
+             $srange = preg_split('/-/', $range, -1, PREG_SPLIT_NO_EMPTY);
+             $str_range=array();
+             foreach($srange as $kk => $vv) {
+                $str_range[]=utf8chr($vv);
+             }
+             foreach($str_range as $val) {
+                $newnumbers[]=sprintf('%s%s',$number, $val);
+             }
+             $num=join('-', $newnumbers);
+             $nnum[]=$num;
+          }
+       }
+       
+       // echo sprintf("[%s] - %s\n",__METHOD__, print_r($nnum,true));
+       if (is_array($nnum) && is_array($output)) {
+          $nn=array_merge($output,$nnum);
+          $numstr=join(';', $nn);
+          return($numstr);
+       } elseif (is_array($output)) {
+          return($output);
+       } else {
+          return(array());
+       }  
+    }
 }
 
-?>
+function ordutf8($string, &$offset=0) {
+   $code = ord(substr($string, $offset,1)); 
+   if ($code >= 128) {        //otherwise 0xxxxxxx
+      if ($code < 224) $bytesnumber = 2;                //110xxxxx
+      else if ($code < 240) $bytesnumber = 3;        //1110xxxx
+      else if ($code < 248) $bytesnumber = 4;    //11110xxx
+      $codetemp = $code - 192 - ($bytesnumber > 2 ? 32 : 0) - ($bytesnumber > 3 ? 16 : 0);
+      for ($i = 2; $i <= $bytesnumber; $i++) {
+         $offset ++;
+         $code2 = ord(substr($string, $offset, 1)) - 128;        //10xxxxxx
+         $codetemp = $codetemp*64 + $code2;
+      }
+      $code = $codetemp;
+   }
+   $offset += 1;
+   if ($offset >= strlen($string)) $offset = -1;
+   return $code;
+}
+
+function utf8chr($u) {
+   return mb_convert_encoding('&#' . intval($u) . ';', 'UTF-8', 'HTML-ENTITIES');
+}
+
+
+function cmp($a, $b)
+{
+    global $array;
+    return strcmp($array[$a]['db'], $array[$b]['db']);
+}
