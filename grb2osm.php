@@ -64,7 +64,9 @@ if (isset($options['outfile']) && $options['outfile']=='database') {
 
    $adcounter=0;
 
-   foreach($osmtool->get_all_oidn_address() as $oidn => $val) {
+   foreach($osmtool->get_all_oidn_address() as $entity_oidn => $val) {
+      list($entity, $oidn) = preg_split('/_/', $entity_oidn, -1, PREG_SPLIT_NO_EMPTY);
+
       $range_update=false;
       $adcounter++;
       // print_r($val);
@@ -110,10 +112,9 @@ if (isset($options['outfile']) && $options['outfile']=='database') {
          }
          $update=$osmtool->mychomp($update);
 
-         $query=sprintf("UPDATE planet_osm_polygon SET %s WHERE \"source:geometry:oidn\" = '%s'",$update,pg_escape_string($oidn));
+         $query=sprintf("UPDATE planet_osm_polygon SET %s WHERE \"source:geometry:oidn\" = '%s' AND \"source:geometry:entity\" = '%s' ",$update,pg_escape_string($oidn),pg_escape_string($entity));
          //  UPDATE planet_osm_polygon SET "addr:housenumber" = 'Smissestraat'  WHERE "source:geometry:oidn" = '6433';
-
-         echo $query.PHP_EOL;
+         //echo $query.PHP_EOL;
          $osmtool->counters['update_to_db']++;
          $result = pg_query($query); 
          if(pg_affected_rows ( $result )) {
@@ -478,6 +479,7 @@ class OsmTool {
             'gbg_addressrecords' => 0 , 
             'adp_addressrecords' => 0 , 
             'knw_addressrecords' => 0 ,
+            'unknown_addressrecords' => 0 ,
             'merged_huisnr' => 0 ,
             'merged_busnr' => 0 ,
             'merged_appartnr' => 0 ,
@@ -517,7 +519,6 @@ class OsmTool {
             // break;
         }
         // print_r($this->addresses); exit;
-
     }
 
     public function get_oidn_address($oidn) {
@@ -549,6 +550,19 @@ class OsmTool {
         $return = 0;
 
         $this->logtrace(2, sprintf("[%s] - Trying to open DBase DB %s",__METHOD__,$database));
+
+        /* Extract the entity as oidn col turns out to be unique only within the same entity */
+        $base = basename($database, ".dbf");
+        if (preg_match('/^Tbl(\w{3})Adr.*/',$base,$matches)) {
+            print_r($matches);
+        }
+
+        if (count($matches) == 2 ) {
+            $entity=$matches[1];
+        } else {
+            $entity='NULL'; // If a file isn't recognised, we need to skip
+            return array();
+        }
 
         //$this->db = new Table(dirname(__FILE__). '/' . $database, null, 'CP1252');
         $this->db = new Table($database, null, 'CP1252');
@@ -582,31 +596,34 @@ class OsmTool {
                 [hnrlabel] => 55                 
              */
             if(isset($cols['gbgoidn'])) {
-                $addresses[$record->gbgoidn][] = array( 'huisnr' => $record->huisnr, 'busnr' => $record->busnr, 'appartnr'=> $record->appartnr, 'straatnm'=> $record->straatnm, 'hnrlabel' => $record->hnrlabel);
+                $addresses[$entity.'_'.$record->gbgoidn][] = array( 'huisnr' => $record->huisnr, 'busnr' => $record->busnr, 'appartnr'=> $record->appartnr, 'straatnm'=> $record->straatnm, 'hnrlabel' => $record->hnrlabel);
                 $this->counters['gbg_addressrecords']++;
             } elseif(isset($cols['adpoidn'])) {
-                $addresses[$record->adpoidn][] = array( 'huisnr' => $record->huisnr, 'busnr' => $record->busnr, 'appartnr'=> $record->appartnr, 'straatnm'=> $record->straatnm, 'hnrlabel' => $record->hnrlabel);
+                $addresses[$entity.'_'.$record->adpoidn][] = array( 'huisnr' => $record->huisnr, 'busnr' => $record->busnr, 'appartnr'=> $record->appartnr, 'straatnm'=> $record->straatnm, 'hnrlabel' => $record->hnrlabel);
                 $this->counters['adp_addressrecords']++;
             } elseif(isset($cols['knwoidn'])) {
-                $addresses[$record->knwoidn][] = array( 'huisnr' => $record->huisnr, 'busnr' => $record->busnr, 'appartnr'=> $record->appartnr, 'straatnm'=> $record->straatnm, 'hnrlabel' => $record->hnrlabel);
+                $addresses[$entity.'_'.$record->knwoidn][] = array( 'huisnr' => $record->huisnr, 'busnr' => $record->busnr, 'appartnr'=> $record->appartnr, 'straatnm'=> $record->straatnm, 'hnrlabel' => $record->hnrlabel);
                 $this->counters['knw_addressrecords']++;
+            } else {
+                $this->counters['unknown_addressrecords']++;
             }
             $this->counters['address_records']++;
         }
 
         if ($this->counters['knw_addressrecords'] + $this->counters['adp_addressrecords'] + $this->counters['gbg_addressrecords'] <= 0 ) {
-            $this->logtrace(3, sprintf("[%s] - gbg_addressrecords %s.",__METHOD__,$this->counters['gbg_addressrecords']));
-            $this->logtrace(3, sprintf("[%s] - adp_addressrecords %s.",__METHOD__,$this->counters['adp_addressrecords']));
-            $this->logtrace(3, sprintf("[%s] - knw_addressrecords %s.",__METHOD__,$this->counters['knw_addressrecords']));
             $this->logtrace(3, sprintf("[%s] - No addresses loaded at all, pointless to continue.",__METHOD__));
             print_r($cols);
             $this->logtrace(3, sprintf("[%s] - tip: mod the code to find the correct colname from the list above.",__METHOD__));
             exit;
         } else {
+            $this->logtrace(3, sprintf("[%s] - gbg_addressrecords %s.",__METHOD__,$this->counters['gbg_addressrecords']));
+            $this->logtrace(3, sprintf("[%s] - adp_addressrecords %s.",__METHOD__,$this->counters['adp_addressrecords']));
+            $this->logtrace(3, sprintf("[%s] - knw_addressrecords %s.",__METHOD__,$this->counters['knw_addressrecords']));
+            $this->logtrace(3, sprintf("[%s] - unknown entity addressrecords %s.",__METHOD__,$this->counters['unknown_addressrecords']));
             $this->logtrace(3, sprintf("[%s] - Done. loaded (%d)",__METHOD__, count($addresses)));
         }
 
-        $this->logtrace(3, sprintf("[%s] - Postprocessing addresses.",__METHOD__));
+        $this->logtrace(3, sprintf("[%s] - Postprocessing addresses (%d).",__METHOD__,$this->counters['address_records']));
         /*      [huisnr] => 613A
                 [busnr] => nvt
                 [appartnr] => nvt
