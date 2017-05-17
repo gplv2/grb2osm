@@ -55,10 +55,10 @@ $osmtool = new OsmTool($options);
 $osmtool->init_dbf($target_file);
 
 if (isset($options['outfile']) && $options['outfile']=='database') {
-   $host = "localhost"; 
+   $host = "grb-db-0"; 
    $user = "grb-data"; 
-   $pass = "snowball11.."; 
-   $db = "grb"; 
+   $pass = "str0ngDBp4ssw0rd"; 
+   $db   = "grb_api"; 
 
    $con = pg_connect("host=$host dbname=$db user=$user password=$pass") or die ("Could not connect to server\n"); 
 
