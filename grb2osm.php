@@ -119,7 +119,7 @@ if (isset($options['outfile']) && $options['outfile']=='database') {
          $result = pg_query($query); 
          if(pg_affected_rows ( $result )) {
             $osmtool->counters['updated_in_db']+=pg_affected_rows ( $result );
-            if($adcounter % 150 === 0 ) {
+            if($adcounter % 500 === 0 ) {
                $osmtool->logtrace(3, sprintf("[%s] - Updated %d records in DB ...",__METHOD__, $osmtool->counters['updated_in_db']));
                $osmtool->logtrace(4, sprintf("[%s] - QRY: %s",__METHOD__, $query));
             }
