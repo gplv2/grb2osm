@@ -55,7 +55,7 @@ $osmtool = new OsmTool($options);
 $osmtool->init_dbf($target_file);
 
 if (isset($options['outfile']) && $options['outfile']=='database') {
-   $host = "grb-db-0"; 
+   $host = "127.0.0.1"; 
    $user = "grb-data"; 
    $pass = "str0ngDBp4ssw0rd"; 
    $db   = "grb_api"; 
