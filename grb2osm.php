@@ -112,14 +112,14 @@ if (isset($options['outfile']) && $options['outfile']=='database') {
          }
          $update=$osmtool->mychomp($update);
 
-         $query=sprintf("UPDATE planet_osm_polygon SET %s WHERE \"source:geometry:oidn\" = '%s' AND \"source:geometry:entity\" = '%s' ",$update,pg_escape_string($oidn),pg_escape_string($entity));
+         $query=sprintf("UPDATE planet_osm_polygon SET %s WHERE (\"source:geometry:oidn\" = '%s' AND \"source:geometry:entity\" = '%s') OR \"source:geometry:ref\" = '%s/%s' ",$update,pg_escape_string($oidn),pg_escape_string($entity),pg_escape_string($entity),pg_escape_string($oidn));
          //  UPDATE planet_osm_polygon SET "addr:housenumber" = 'Smissestraat'  WHERE "source:geometry:oidn" = '6433';
          //echo $query.PHP_EOL;
          $osmtool->counters['update_to_db']++;
          $result = pg_query($query); 
          if(pg_affected_rows ( $result )) {
             $osmtool->counters['updated_in_db']+=pg_affected_rows ( $result );
-            if($adcounter % 500 === 0 ) {
+            if($adcounter % 5000 === 0 ) {
                $osmtool->logtrace(3, sprintf("[%s] - Updated %d records in DB ...",__METHOD__, $osmtool->counters['updated_in_db']));
                $osmtool->logtrace(4, sprintf("[%s] - QRY: %s",__METHOD__, $query));
             }
