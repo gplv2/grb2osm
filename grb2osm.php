@@ -1,8 +1,10 @@
-#!/usr/bin/php
 <?php
-require_once('vendor/autoload.php');
 
-use XBase\Table;
+# use XBase\Table;
+# use XBase\Header;
+use XBase\TableReader;
+
+require_once 'vendor/autoload.php';
 
 ini_set("max_execution_time", "0");
 ini_set("max_input_time", "0");
@@ -565,7 +567,7 @@ class OsmTool {
         }
 
         //$this->db = new Table(dirname(__FILE__). '/' . $database, null, 'CP1252');
-        $this->db = new Table($database, null, 'CP1252');
+        $this->db = new TableReader($database, ['encoding' => 'CP1252']);
 
         if (!$this->db) {
             $this->logtrace(0, sprintf("[%s] - Problem opening DB %s",__METHOD__,$database));
@@ -576,9 +578,15 @@ class OsmTool {
 
         $addresses=array();
 
-        // print_r($this->db);exit;
+        //print_r($this);exit;
         /* find the column we need */
-        $cols = $this->db->columns;
+
+        $cols = $this->db->getColumns();
+
+        // $cols = $this->db->header;
+        // print_r($this->db);exit;
+
+	// print_r ($cols); exit;
 
         $this->logtrace(3, sprintf("[%s] - Reading records...",__METHOD__));
         while ($record = $this->db->nextRecord()) {
