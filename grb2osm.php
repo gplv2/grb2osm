@@ -33,6 +33,12 @@ $cliargs = array(
          'description' => "The name of the target .osm (xml) output file",
          'default' => 'database'
          ),
+      'picc' => array(
+         'short' => 'p',
+         'type' => 'optional',
+         'description' => "Switch for parsing PICC address data which is different from grb",
+         'default' => 'database'
+         ),
       'debug' => array(
          'short' => 'd',
          'type' => 'optional',
@@ -47,6 +53,7 @@ $options = cliargs_get_options($cliargs);
 if (isset($options['file'])) { $target_file  = trim($options['file']); } else { unset($target_file); }
 if (isset($options['osmfile'])) { $osm_file  = trim($options['osmfile']); } else { unset($osm_file); }
 if (isset($options['outfile'])) { $out_file  = trim($options['outfile']); } else { unset($out_file); }
+if (isset($options['picc'])) { $picc_mode  = true ; } else { $picc_mode = false ; }
 
 if (empty($target_file)) {
     cliargs_print_usage_and_exit($cliargs);
