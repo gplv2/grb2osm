@@ -65,11 +65,12 @@ $osmtool->init_dbf($target_file);
 
 if (isset($options['outfile']) && $options['outfile']=='database') {
    $host = "127.0.0.1"; 
+   $port = 5434;
    $user = "grb-data"; 
    $pass = "str0ngDBp4ssw0rd"; 
    $db   = "grb_api"; 
 
-   $con = pg_connect("host=$host dbname=$db user=$user password=$pass") or die ("Could not connect to server\n"); 
+   $con = pg_connect("host=$host port=$port dbname=$db user=$user password=$pass") or die ("Could not connect to server\n"); 
 
    $adcounter=0;
 
@@ -486,6 +487,8 @@ class OsmTool {
     public $counters=array('matches' => 0,
             'misses' => 0 ,
             'gbg_addressrecords' => 0 , 
+            'urbis_addressrecords' => 0 , 
+            'picc_addressrecords' => 0 , 
             'adp_addressrecords' => 0 , 
             'knw_addressrecords' => 0 ,
             'unknown_addressrecords' => 0 ,
