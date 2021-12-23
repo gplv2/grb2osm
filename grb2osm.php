@@ -35,9 +35,8 @@ $cliargs = array(
          ),
       'picc' => array(
          'short' => 'p',
-         'type' => 'optional',
-         'description' => "Switch for parsing PICC address data which is different from grb",
-         'default' => 'database'
+         'type' => 'switch',
+         'description' => "Switch for parsing PICC address data which is different from grb"
          ),
       'debug' => array(
          'short' => 'd',
@@ -50,6 +49,7 @@ $cliargs = array(
 /* command line errors are thrown hereafter */
 $options = cliargs_get_options($cliargs);
 
+// These will end up as the settings in the class
 if (isset($options['file'])) { $target_file  = trim($options['file']); } else { unset($target_file); }
 if (isset($options['osmfile'])) { $osm_file  = trim($options['osmfile']); } else { unset($osm_file); }
 if (isset($options['outfile'])) { $out_file  = trim($options['outfile']); } else { unset($out_file); }
@@ -61,14 +61,21 @@ if (empty($target_file)) {
 }
 
 $osmtool = new OsmTool($options);
+$osmtool->logtrace(2, sprintf("[%s] %s","MAIN","Init"));
+$osmtool->logtrace(2, sprintf("[%s] Opening DB file(s) %s","MAIN",$target_file));
 $osmtool->init_dbf($target_file);
+$osmtool->logtrace(2, sprintf("[%s] OK opening %s","MAIN",$target_file));
 
-if (isset($options['outfile']) && $options['outfile']=='database') {
-   $host = "127.0.0.1"; 
-   $port = 5434;
-   $user = "grb-data"; 
-   $pass = "str0ngDBp4ssw0rd"; 
-   $db   = "grb_api"; 
+// Some harcoded defaults
+$host = "127.0.0.1"; 
+$port = 5434;
+$user = "grb-data"; 
+$pass = "str0ngDBp4ssw0rd"; 
+$db   = "grb_api"; 
+
+
+// GRB portion
+if (isset($options['outfile']) && $options['outfile']=='database' && !$picc_mode) {
 
    $con = pg_connect("host=$host port=$port dbname=$db user=$user password=$pass") or die ("Could not connect to server\n"); 
 
@@ -189,6 +196,133 @@ exit;
    }
    exit;
 }
+
+
+// PICC address processing
+if (isset($options['outfile']) && $options['outfile']=='database' && $picc_mode) {
+
+   $con = pg_connect("host=$host port=$port dbname=$db user=$user password=$pass") or die ("Could not connect to server\n"); 
+
+   $adcounter=0;
+
+   print_r($osmtool);exit;
+
+   foreach($osmtool->get_all_oidn_address() as $entity_oidn => $val) {
+      list($entity, $oidn) = preg_split('/_/', $entity_oidn, -1, PREG_SPLIT_NO_EMPTY);
+
+      $range_update=false;
+      $adcounter++;
+      // print_r($val);
+      $update="";
+
+      $blah = array();
+      $tag='busnr';
+      // $this->counters['counter_exist_addr']++
+      if(key_exists($tag, $val) && strlen($val[$tag])) {
+         //$osmtool->counters['counter_exist_flats']++;
+         $blah['addr:flats']=$osmtool->number2range(trim($val[$tag]));
+         //$osmtool->logtrace(5, sprintf("[%s] - address data: %s",__METHOD__, json_encode($adline)));
+         // $osmtool->logtrace(3, sprintf("[%s] - Flats Range: %s ",__METHOD__, $blah['addr:flats']));
+         $pos = strpos($blah['addr:flats'], ';');
+         if ($pos !== false) {
+            $range_update=true;
+         }
+      }
+
+      $tag='huisnr';
+      if(key_exists($tag, $val) && strlen($val[$tag])) {
+         //$osmtool->counters['counter_exist_housenumber']++;
+         $blah['addr:housenumber']=$osmtool->number2range(trim($val[$tag]));
+         // $osmtool->logtrace(3, sprintf("[%s] - House Range: %s ",__METHOD__, $blah['addr:housenumber']));
+         $pos = strpos($blah['addr:housenumber'], ';');
+         if ($pos !== false) {
+            $range_update=true;
+         }
+      }
+
+      $tag='straatnm';
+      if(key_exists($tag, $val) && strlen($val[$tag])) {
+         //$osmtool->counters['counter_exist_street']++;
+         $blah['addr:street']=trim($val[$tag]);
+      }
+
+      if($range_update || 1==1) {
+         foreach ($blah as $key => $set) {
+            $osmtool->logtrace(6, sprintf("[%s] blah[%s] = %s",__METHOD__,$key,$set));
+             $set = ltrim($set, ';');
+             $set = rtrim($set, ';');
+            $update.=sprintf("\"%s\" = '%s' ,", pg_escape_string($key), pg_escape_string($set));
+         }
+         $update=$osmtool->mychomp($update);
+
+         $query=sprintf("UPDATE planet_osm_polygon SET %s WHERE (\"source:geometry:oidn\" = '%s' AND \"source:geometry:entity\" = '%s') OR \"source:geometry:ref\" = '%s/%s' ",$update,pg_escape_string($oidn),pg_escape_string($entity),pg_escape_string($entity),pg_escape_string($oidn));
+         //  UPDATE planet_osm_polygon SET "addr:housenumber" = 'Smissestraat'  WHERE "source:geometry:oidn" = '6433';
+         //echo $query.PHP_EOL;
+         $osmtool->counters['update_to_db']++;
+         $result = pg_query($query); 
+         if(pg_affected_rows ( $result )) {
+            $osmtool->counters['updated_in_db']+=pg_affected_rows ( $result );
+            if($adcounter % 5000 === 0 ) {
+               $osmtool->logtrace(3, sprintf("[%s] - Updated %d records in DB ...",__METHOD__, $osmtool->counters['updated_in_db']));
+               $osmtool->logtrace(4, sprintf("[%s] - QRY: %s",__METHOD__, $query));
+            }
+         }
+      }
+   }
+exit;
+   // Fix up the DB (remove duplicate stuff)
+   // select osm_id,"source:geometry:oidn","source:geometry:date" from planet_osm_polygon where "source:geometry:oidn" = '1000000';
+   // Getting list of duplicate oidn's
+
+   // select "source:geometry:oidn", count(*) from planet_osm_polygon group by "source:geometry:oidn" HAVING count(*)>1 limit 10;
+   $query=sprintf("SELECT \"source:geometry:oidn\" from planet_osm_polygon group by \"source:geometry:oidn\" HAVING count(*)>1");
+   $osmtool->logtrace(3, sprintf("[%s] - QRY: %s",__METHOD__, $query));
+   $result = pg_query($query); 
+   $numrows = pg_num_rows($result);
+   $osmtool->logtrace(3, sprintf("[%s] - Found: %s",__METHOD__, $numrows));
+   if($numrows) {
+      while ($row = pg_fetch_assoc($result)) {
+         $grb_dates = array();
+         $qr=sprintf("SELECT osm_id,\"source:geometry:oidn\",\"source:geometry:date\" FROM planet_osm_polygon WHERE \"source:geometry:oidn\" = '%s'",pg_escape_string($row['source:geometry:oidn']));
+         $osmtool->logtrace(3, sprintf("[%s] - QRY: %s",__METHOD__, $qr));
+         $res = pg_query($qr); 
+         $numrows = pg_num_rows($res);
+         $osmtool->logtrace(3, sprintf("[%s] - Found: %s",__METHOD__, $numrows));
+
+         while ($r = pg_fetch_assoc($res)) {
+            $grb_dates[] = $r['source:geometry:date'];
+            $osm_ids[] = $r['osm_id'];
+         }
+         //pg_free_result ($r);
+
+         usort($grb_dates, 'cmp');
+         usort($osm_ids, 'cmp');
+
+         //print_r($grb_dates);
+         //print_r($osm_ids);exit;
+
+         $delqry=sprintf("DELETE FROM planet_osm_polygon WHERE \"source:geometry:oidn\" = '%s' AND \"source:geometry:date\" <> '%s'", pg_escape_string($row['source:geometry:oidn']), pg_escape_string(array_shift($grb_dates)));
+         $osmtool->logtrace(4, sprintf("[%s] - QRY: %s",__METHOD__, $delqry));
+         $delresult = pg_query($delqry); 
+         if(pg_affected_rows ( $delresult )) {
+            $osmtool->logtrace(3, sprintf("[%s] - Deleted: %s",__METHOD__, pg_affected_rows ( $delresult )));
+            $osmtool->counters['deleted_in_db']+=pg_affected_rows ( $delresult );
+         }
+         if (pg_affected_rows ( $delresult ) == 0 ) {
+            $delqry=sprintf("DELETE FROM planet_osm_polygon WHERE osm_id = '%s'", pg_escape_string(array_shift($osm_ids)));
+            $osmtool->logtrace(4, sprintf("[%s] - QRY: %s",__METHOD__, $delqry));
+            $delresult = pg_query($delqry); 
+            if(pg_affected_rows ( $delresult )) {
+               $osmtool->logtrace(3, sprintf("[%s] - Deleted: %s",__METHOD__, pg_affected_rows ( $delresult )));
+               $osmtool->counters['deleted_in_db']+=pg_affected_rows ( $delresult );
+            }
+         }
+
+      }
+   }
+   exit;
+}
+
 
 if (isset($options['outfile']) && $options['outfile']=='database') {
   // Load this stuff in the db
@@ -484,6 +618,9 @@ class OsmTool {
 
     private $addresses=array();
 
+    // GRB , PICC or URBIS
+    private $mode="default";
+
     public $counters=array('matches' => 0,
             'misses' => 0 ,
             'gbg_addressrecords' => 0 , 
@@ -515,6 +652,9 @@ class OsmTool {
     public function __construct($settings=null) {
         if(!empty($settings)) {
             $this->settings=$settings;
+        }
+        if($settings['picc']) {
+            $this->mode='picc';
         }
         if (defined('STDIN')) {
             $this->eol="\n";
@@ -557,23 +697,36 @@ class OsmTool {
       }
     }
 
+    public function get_all_picc_address() {
+        if(!empty($this->addresses)) {
+         return($this->addresses);
+         //return($this->addresses[4559386]);
+      }
+    }
+
     private function open_db($database)  {
         $this->logtrace(3, sprintf("[%s] - Start",__METHOD__));
         $return = 0;
 
         $this->logtrace(2, sprintf("[%s] - Trying to open DBase DB %s",__METHOD__,$database));
 
-        /* Extract the entity as oidn col turns out to be unique only within the same entity */
-        $base = basename($database, ".dbf");
-        if (preg_match('/^Tbl(\w{3})Adr.*/',$base,$matches)) {
-            print_r($matches);
-        }
 
-        if (count($matches) == 2 ) {
-            $entity=$matches[1];
-        } else {
-            $entity='NULL'; // If a file isn't recognised, we need to skip
-            return array();
+        if ($this->mode=="default") {
+            /* Extract the entity as oidn col turns out to be unique only within the same entity */
+            $base = basename($database, ".dbf");
+            if (preg_match('/^Tbl(\w{3})Adr.*/',$base,$matches)) {
+                print_r($matches);
+            }
+
+            if (count($matches) == 2 ) {
+                $entity=$matches[1];
+            } else {
+                $entity='NULL'; // If a file isn't recognised, we need to skip
+                return array();
+            }
+
+        } elseif ($this->mode=="picc") {
+            $entity='Picc'; 
         }
 
         //$this->db = new Table(dirname(__FILE__). '/' . $database, null, 'CP1252');
@@ -596,7 +749,7 @@ class OsmTool {
         // $cols = $this->db->header;
         // print_r($this->db);exit;
 
-	// print_r ($cols); exit;
+	    print_r ($cols); exit;
 
         $this->logtrace(3, sprintf("[%s] - Reading records...",__METHOD__));
         while ($record = $this->db->nextRecord()) {
