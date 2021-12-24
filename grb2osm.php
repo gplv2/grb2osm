@@ -632,6 +632,8 @@ class OsmTool {
             'picc_addressrecords' => 0 , 
             'search_picc_ref_not_found' => 0 , 
             'search_picc_ref_in_db' => 0 , 
+            'search_picc_ref_double' => 0 , 
+            'search_picc_ref_deleted' => 0 , 
             'adp_addressrecords' => 0 , 
             'knw_addressrecords' => 0 ,
             'unknown_addressrecords' => 0 ,
@@ -760,7 +762,7 @@ class OsmTool {
             $conn_string = sprintf("host=%s port=%d dbname=%s user=%s password=%s", $this->settings['host'], $this->settings['port'], $this->settings['db'], $this->settings['user'], $this->settings['pass']);
             $pcon = pg_connect($conn_string) or die ("Could not connect to server\n"); 
 
-            $query="SELECT osm_id FROM planet_osm_polygon WHERE ST_Contains( way, ST_Transform(ST_GeomFromText($1, 31370), 900913)) AND building IS NOT NULL AND (" . pg_escape_identifier('source:geometry:entity') . " NOT IN ('Gbg','Knw','Gba') OR " . pg_escape_identifier('source:geometry:entity') . " IS NULL) ;";
+            $query="SELECT osm_id FROM planet_osm_polygon WHERE ST_Contains( way, ST_Transform(ST_GeomFromText($1, 31370), 900913)) AND building IS NOT NULL AND (" . pg_escape_identifier('source:geometry:entity') . " NOT IN ('Gbg','Knw','Gba') OR " . pg_escape_identifier('source:geometry:entity') . " IS NULL) ORDER BY " . pg_escape_identifier('source:geometry:date') . " DESC";
 
             // Prepare a query for execution
 
@@ -768,7 +770,7 @@ class OsmTool {
                 $this->logtrace(0, sprintf("[%s] - Cannot prepare query.",__METHOD__));
                 exit;
             }
-	        //print_r ($cols); exit;
+            //print_r ($cols); exit;
         }
 
 
@@ -802,7 +804,25 @@ class OsmTool {
                     $this->logtrace(3, sprintf("[%s] - Searched for %d records in DB ...",__METHOD__, $this->counters['search_picc_ref_in_db']));
                 }
 
-                if ($num_results > 1) {
+                if ($num_results == 2) {
+                    //$osmtool->logtrace(4, sprintf("[%s] - QRY: %s",__METHOD__, $query));
+                    $this->counters['search_picc_ref_double']++;
+                    $this->logtrace(0, sprintf("[%s] - Problem, exact 2, probably duplicate keeping youngest. Deleting old one from DB",__METHOD__));
+                    $rows = pg_fetch_all($results);
+                    // Pick the youngest
+                    $osm_id=$rows[0];
+                    $osm_id_to_delete=$rows[1];
+
+                    $query=sprintf("DELETE FROM planet_osm_polygon WHERE osm_id=%d",pg_escape_string($osm_id_to_delete));
+                    $result = pg_query($query); 
+                    if(pg_affected_rows ( $result )) {
+                        $this->counters['search_picc_ref_deleted']+=pg_affected_rows( $result );
+                            $this->logtrace(4, sprintf("[%s] - QRY: %s",__METHOD__, $query));
+                        }
+                    }
+                    //print_r($rows);
+                    //exit;
+                } elseif ($num_results > 2) {
                     //$osmtool->logtrace(4, sprintf("[%s] - QRY: %s",__METHOD__, $query));
                     $this->logtrace(0, sprintf("[%s] - Problem, we expected 1 single result not more.",__METHOD__));
                     $rows = pg_fetch_all($results);
@@ -823,10 +843,11 @@ class OsmTool {
                     // Nothing found, continue
                     $this->counters['search_picc_ref_not_found']++;
                     continue;
+                } else {
+                    $row = pg_fetch_array($results);
+                    //print_r($row); exit;
+                    $osm_id=array_shift($row);
                 }
-                $row = pg_fetch_array($results);
-                //print_r($row); exit;
-                $osm_id=array_shift($row);
 
                 if(isset($osm_id)) {
                     $this->counters['picc_addressrecords']++;
