@@ -55,6 +55,19 @@ if (isset($options['osmfile'])) { $osm_file  = trim($options['osmfile']); } else
 if (isset($options['outfile'])) { $out_file  = trim($options['outfile']); } else { unset($out_file); }
 if (isset($options['picc'])) { $picc_mode  = true ; } else { $picc_mode = false ; }
 
+// Some harcoded defaults
+$host = "127.0.0.1"; 
+$port = 5434;
+$user = "grb-data"; 
+$pass = "str0ngDBp4ssw0rd"; 
+$db   = "grb_api"; 
+
+if (isset($host)) { $options['host']  = trim($host); } else { unset($options['host']); }
+if (isset($port)) { $options['port']  = intval($port); } else { unset($options['port']); }
+if (isset($user)) { $options['user']  = trim($user); } else { unset($options['user']); }
+if (isset($pass)) { $options['pass']  = trim($pass); } else { unset($options['pass']); }
+if (isset($db)) { $options['db']  = trim($db); } else { unset($options['db']); }
+
 if (empty($target_file)) {
     cliargs_print_usage_and_exit($cliargs);
     exit;
@@ -64,15 +77,6 @@ $osmtool = new OsmTool($options);
 $osmtool->logtrace(2, sprintf("[%s] %s","MAIN","Init"));
 $osmtool->logtrace(2, sprintf("[%s] Opening DB file(s) %s","MAIN",$target_file));
 $osmtool->init_dbf($target_file);
-$osmtool->logtrace(2, sprintf("[%s] OK opening %s","MAIN",$target_file));
-
-// Some harcoded defaults
-$host = "127.0.0.1"; 
-$port = 5434;
-$user = "grb-data"; 
-$pass = "str0ngDBp4ssw0rd"; 
-$db   = "grb_api"; 
-
 
 // GRB portion
 if (isset($options['outfile']) && $options['outfile']=='database' && !$picc_mode) {
@@ -205,7 +209,7 @@ if (isset($options['outfile']) && $options['outfile']=='database' && $picc_mode)
 
    $adcounter=0;
 
-   print_r($osmtool);exit;
+   print_r($osmtool-get_all_oidn_address());exit;
 
    foreach($osmtool->get_all_oidn_address() as $entity_oidn => $val) {
       list($entity, $oidn) = preg_split('/_/', $entity_oidn, -1, PREG_SPLIT_NO_EMPTY);
@@ -626,6 +630,8 @@ class OsmTool {
             'gbg_addressrecords' => 0 , 
             'urbis_addressrecords' => 0 , 
             'picc_addressrecords' => 0 , 
+            'search_picc_ref_not_found' => 0 , 
+            'search_picc_ref_in_db' => 0 , 
             'adp_addressrecords' => 0 , 
             'knw_addressrecords' => 0 ,
             'unknown_addressrecords' => 0 ,
@@ -697,19 +703,11 @@ class OsmTool {
       }
     }
 
-    public function get_all_picc_address() {
-        if(!empty($this->addresses)) {
-         return($this->addresses);
-         //return($this->addresses[4559386]);
-      }
-    }
-
     private function open_db($database)  {
         $this->logtrace(3, sprintf("[%s] - Start",__METHOD__));
         $return = 0;
 
         $this->logtrace(2, sprintf("[%s] - Trying to open DBase DB %s",__METHOD__,$database));
-
 
         if ($this->mode=="default") {
             /* Extract the entity as oidn col turns out to be unique only within the same entity */
@@ -748,8 +746,31 @@ class OsmTool {
 
         // $cols = $this->db->header;
         // print_r($this->db);exit;
+        //
+        // SELECT osm_id FROM planet_osm_polygon WHERE ST_Contains( way, ST_Transform(ST_GeomFromText('POINT(193824.33500000 161717.22000000)', 31370), 900913)) AND building IS NOT NULL;
 
-	    print_r ($cols); exit;
+        // Find back the building, use osm_id as unique ref for multiple nr support
+        //$query=sprintf("SELECT osm_id FROM planet_osm_polygon WHERE ST_Contains( way, ST_Transform(ST_GeomFromText('POINT(%d %d)', 31370), 900913)) AND building IS NOT NULL",pg_escape_string($x),pg_escape_string($y));
+        
+        // the_query
+
+        //print_r($this->settings);
+        if ($this->mode=="picc") {
+            $this->logtrace(1, sprintf("[%s] - Opening DB connection",__METHOD__));
+            $conn_string = sprintf("host=%s port=%d dbname=%s user=%s password=%s", $this->settings['host'], $this->settings['port'], $this->settings['db'], $this->settings['user'], $this->settings['pass']);
+            $pcon = pg_connect($conn_string) or die ("Could not connect to server\n"); 
+
+            $query="SELECT osm_id FROM planet_osm_polygon WHERE ST_Contains( way, ST_Transform(ST_GeomFromText($1, 31370), 900913)) AND building IS NOT NULL AND (" . pg_escape_identifier('source:geometry:entity') . " NOT IN ('Gbg','Knw','Gba') OR " . pg_escape_identifier('source:geometry:entity') . " IS NULL) ;";
+
+            // Prepare a query for execution
+
+            if (!pg_prepare($pcon, "picc_search", $query)){
+                $this->logtrace(0, sprintf("[%s] - Cannot prepare query.",__METHOD__));
+                exit;
+            }
+	        //print_r ($cols); exit;
+        }
+
 
         $this->logtrace(3, sprintf("[%s] - Reading records...",__METHOD__));
         while ($record = $this->db->nextRecord()) {
@@ -766,34 +787,93 @@ class OsmTool {
                 [postcode] => 1980
                 [hnrlabel] => 55                 
              */
-            if(isset($cols['gbgoidn'])) {
-                $addresses[$entity.'_'.$record->gbgoidn][] = array( 'huisnr' => $record->huisnr, 'busnr' => $record->busnr, 'appartnr'=> $record->appartnr, 'straatnm'=> $record->straatnm, 'hnrlabel' => $record->hnrlabel);
-                $this->counters['gbg_addressrecords']++;
-            } elseif(isset($cols['adpoidn'])) {
-                $addresses[$entity.'_'.$record->adpoidn][] = array( 'huisnr' => $record->huisnr, 'busnr' => $record->busnr, 'appartnr'=> $record->appartnr, 'straatnm'=> $record->straatnm, 'hnrlabel' => $record->hnrlabel);
-                $this->counters['adp_addressrecords']++;
-            } elseif(isset($cols['knwoidn'])) {
-                $addresses[$entity.'_'.$record->knwoidn][] = array( 'huisnr' => $record->huisnr, 'busnr' => $record->busnr, 'appartnr'=> $record->appartnr, 'straatnm'=> $record->straatnm, 'hnrlabel' => $record->hnrlabel);
-                $this->counters['knw_addressrecords']++;
-            } else {
-                $this->counters['unknown_addressrecords']++;
+
+            if ($this->mode=="picc") {
+                $entity='Picc';
+                //echo $query.PHP_EOL;
+                $this->counters['search_picc_ref_in_db']++;
+
+                // Execute the prepared query
+                $the_geom =sprintf("POINT(%s %s)", $record->x, $record->y);
+                $results = pg_execute($pcon, "picc_search", array($the_geom));
+                $num_results=pg_num_rows($results);
+
+                if($this->counters['search_picc_ref_in_db'] % 5000 === 0 ) {
+                    $this->logtrace(3, sprintf("[%s] - Searched for %d records in DB ...",__METHOD__, $this->counters['search_picc_ref_in_db']));
+                }
+
+                if ($num_results > 1) {
+                    //$osmtool->logtrace(4, sprintf("[%s] - QRY: %s",__METHOD__, $query));
+                    $this->logtrace(0, sprintf("[%s] - Problem, we expected 1 single result not more.",__METHOD__));
+                    $rows = pg_fetch_all($results);
+                    print_r($rows);
+                    exit;
+                } elseif ($num_results == 0) {
+                    /*
+                    $row = pg_fetch_row($results);
+                    if (!is_array($row)){
+                        $this->logtrace(0, sprintf("[%s] - Problem, we expected an array here (numres = %d)",__METHOD__,$num_results));
+                        $this->logtrace(3, sprintf("[%s] - QRY: %s",__METHOD__, $query));
+                        $this->logtrace(3, sprintf("[%s] - QRY: %s",__METHOD__, $the_geom));
+                        $rows = pg_fetch_all($results);
+                        print_r($rows);
+                        exit;
+                    }
+                     */
+                    // Nothing found, continue
+                    $this->counters['search_picc_ref_not_found']++;
+                    continue;
+                }
+                $row = pg_fetch_array($results);
+                //print_r($row); exit;
+                $osm_id=array_shift($row);
+
+                if(isset($osm_id)) {
+                    $this->counters['picc_addressrecords']++;
+                    $this->counters['address_records']++;
+                    $addresses[$entity.'_'.$osm_id][] = array( 'huisnr' => $record->numero, 'straatnm'=> $record->rue_nom);
+                }
+
+            } elseif ($this->mode=="default") {
+
+                if(isset($cols['gbgoidn'])) {
+                    $addresses[$entity.'_'.$record->gbgoidn][] = array( 'huisnr' => $record->huisnr, 'busnr' => $record->busnr, 'appartnr'=> $record->appartnr, 'straatnm'=> $record->straatnm, 'hnrlabel' => $record->hnrlabel);
+                    $this->counters['gbg_addressrecords']++;
+                } elseif(isset($cols['adpoidn'])) {
+                    $addresses[$entity.'_'.$record->adpoidn][] = array( 'huisnr' => $record->huisnr, 'busnr' => $record->busnr, 'appartnr'=> $record->appartnr, 'straatnm'=> $record->straatnm, 'hnrlabel' => $record->hnrlabel);
+                    $this->counters['adp_addressrecords']++;
+                } elseif(isset($cols['knwoidn'])) {
+                    $addresses[$entity.'_'.$record->knwoidn][] = array( 'huisnr' => $record->huisnr, 'busnr' => $record->busnr, 'appartnr'=> $record->appartnr, 'straatnm'=> $record->straatnm, 'hnrlabel' => $record->hnrlabel);
+                    $this->counters['knw_addressrecords']++;
+                } else {
+                    $this->counters['unknown_addressrecords']++;
+                }
+                $this->counters['address_records']++;
             }
-            $this->counters['address_records']++;
         }
 
-        if ($this->counters['knw_addressrecords'] + $this->counters['adp_addressrecords'] + $this->counters['gbg_addressrecords'] <= 0 ) {
-            $this->logtrace(3, sprintf("[%s] - No addresses loaded at all, pointless to continue.",__METHOD__));
-            print_r($cols);
-            $this->logtrace(3, sprintf("[%s] - tip: mod the code to find the correct colname from the list above.",__METHOD__));
-            exit;
-        } else {
-            $this->logtrace(3, sprintf("[%s] - gbg_addressrecords %s.",__METHOD__,$this->counters['gbg_addressrecords']));
-            $this->logtrace(3, sprintf("[%s] - adp_addressrecords %s.",__METHOD__,$this->counters['adp_addressrecords']));
-            $this->logtrace(3, sprintf("[%s] - knw_addressrecords %s.",__METHOD__,$this->counters['knw_addressrecords']));
-            $this->logtrace(3, sprintf("[%s] - unknown entity addressrecords %s.",__METHOD__,$this->counters['unknown_addressrecords']));
-            $this->logtrace(3, sprintf("[%s] - Done. loaded (%d)",__METHOD__, count($addresses)));
-        }
+        if ($this->mode=="default") {
+            if ($this->counters['knw_addressrecords'] + $this->counters['adp_addressrecords'] + $this->counters['gbg_addressrecords'] <= 0 ) {
+                $this->logtrace(3, sprintf("[%s] - No addresses loaded at all, pointless to continue.",__METHOD__));
+                print_r($cols);
+                $this->logtrace(3, sprintf("[%s] - tip: mod the code to find the correct colname from the list above.",__METHOD__));
+                exit;
+            } else {
+                $this->logtrace(3, sprintf("[%s] - gbg_addressrecords %s.",__METHOD__,$this->counters['gbg_addressrecords']));
+                $this->logtrace(3, sprintf("[%s] - adp_addressrecords %s.",__METHOD__,$this->counters['adp_addressrecords']));
+                $this->logtrace(3, sprintf("[%s] - knw_addressrecords %s.",__METHOD__,$this->counters['knw_addressrecords']));
+                $this->logtrace(3, sprintf("[%s] - unknown entity addressrecords %s.",__METHOD__,$this->counters['unknown_addressrecords']));
+                $this->logtrace(3, sprintf("[%s] - Done. loaded (%d)",__METHOD__, count($addresses)));
+            }
 
+        } elseif ($this->mode=="picc") {
+            if ($this->counters['picc_addressrecords'] <= 0 ) {
+                $this->logtrace(3, sprintf("[%s] - No addresses loaded at all, pointless to continue.",__METHOD__));
+                //print_r($cols);
+                //$this->logtrace(3, sprintf("[%s] - tip: mod the code to find the correct colname from the list above.",__METHOD__));
+                exit;
+            }
+        }
         $this->logtrace(3, sprintf("[%s] - Postprocessing addresses (%d).",__METHOD__,$this->counters['address_records']));
         /*      [huisnr] => 613A
                 [busnr] => nvt
@@ -801,89 +881,161 @@ class OsmTool {
                 [straatnm] => Tervuursesteenweg
                 [hnrlabel] => 613A-621 
          */
-        foreach ($addresses as $k => $v) {
-            if (is_array($v) && count($v)> 1) {
-                $this->logtrace(5, sprintf("[%s] - Multi records found for building.",__METHOD__));
-                $streetname = null;
+        if ($this->mode=="default") {
+            foreach ($addresses as $k => $v) {
+                if (is_array($v) && count($v)> 1) {
+                    $this->logtrace(5, sprintf("[%s] - Multi records found for building.",__METHOD__));
+                    $streetname = null;
 
-                $hse = array (
+                    $hse = array (
                         'huisnr' => '',
                         'busnr' => '',
                         'appartnr' => '',
                         'straatnm' => ''
-                        );
+                    );
 
-                foreach ($v as $building => $address) {
-                    if (empty($streetname)) {
-                        if (empty($address['straatnm'])) {
+                    foreach ($v as $building => $address) {
+                        if (empty($streetname)) {
+                            if (empty($address['straatnm'])) {
+                                unset($addresses[$k]);
+                                unset($hse);
+                                $this->counters['empty_street_deleted']++;
+                                break;
+                            } else {
+                                $streetname = $address['straatnm'];
+                                $hse['straatnm'].=trim($address['straatnm']);
+                            }
+                        } elseif ( strcmp($streetname, $address['straatnm']) !== 0) {
+                            // We have 2 streetnames for the same building, this is hard to fix on the building 
+                            // ( entrances could be a solution), we should skip doing these automatically
                             unset($addresses[$k]);
                             unset($hse);
-                            $this->counters['empty_street_deleted']++;
+                            $this->counters['double_street_oids'][]=$k;
+                            $this->counters['multi_street_deleted']++;
                             break;
-                        } else {
-                            $streetname = $address['straatnm'];
-                            $hse['straatnm'].=trim($address['straatnm']);
                         }
-                    } elseif ( strcmp($streetname, $address['straatnm']) !== 0) {
-                        // We have 2 streetnames for the same building, this is hard to fix on the building 
-                        // ( entrances could be a solution), we should skip doing these automatically
-                        unset($addresses[$k]);
-                        unset($hse);
-                        $this->counters['double_street_oids'][]=$k;
-                        $this->counters['multi_street_deleted']++;
-                        break;
+                        if (!empty($address['huisnr']) && $address['huisnr']!=='nvt') {
+                            $hse['huisnr'].=$address['huisnr'].';';
+                            $this->counters['merged_huisnr']++;
+                        }
+                        if (!empty($address['busnr']) && $address['busnr']!=='nvt') {
+                            $hse['busnr'].=$address['busnr'].';';
+                            $this->counters['merged_busnr']++;
+                        }
+                        if (!empty($address['appartnr']) && $address['appartnr']!=='nvt') {
+                            $hse['appartnr'].=$address['appartnr'].';';
+                            $this->counters['merged_appartnr']++;
+                        }
                     }
-                    if (!empty($address['huisnr']) && $address['huisnr']!=='nvt') {
-                        $hse['huisnr'].=$address['huisnr'].';';
-                        $this->counters['merged_huisnr']++;
-                    }
-                    if (!empty($address['busnr']) && $address['busnr']!=='nvt') {
-                        $hse['busnr'].=$address['busnr'].';';
-                        $this->counters['merged_busnr']++;
-                    }
-                    if (!empty($address['appartnr']) && $address['appartnr']!=='nvt') {
-                        $hse['appartnr'].=$address['appartnr'].';';
-                        $this->counters['merged_appartnr']++;
-                    }
-                }
-                if(!empty($hse)) {
-                    // print_r($hse);
+                    if(!empty($hse)) {
+                        // print_r($hse);
 
-                    $this->logtrace(5, sprintf("[%s] - Cleaning trailing ';'.",__METHOD__));
-                    if(strlen($hse['huisnr'])) {
-                        $hse['huisnr']=$this->mychomp($hse['huisnr']);
-                    }
-                    if(strlen($hse['busnr'])) {
-                        $hse['busnr']=$this->mychomp($hse['busnr']);
-                    }
-                    if(strlen($hse['appartnr'])) {
-                        $hse['appartnr']=$this->mychomp($hse['appartnr']);
-                    }
-                    $this->logtrace(5, sprintf("[%s] - Natural sorting housenumbers.",__METHOD__));
-                    $this->logtrace(5, sprintf("[%s] - Prune identical multi value.",__METHOD__));
+                        $this->logtrace(5, sprintf("[%s] - Cleaning trailing ';'.",__METHOD__));
+                        if(strlen($hse['huisnr'])) {
+                            $hse['huisnr']=$this->mychomp($hse['huisnr']);
+                        }
+                        if(strlen($hse['busnr'])) {
+                            $hse['busnr']=$this->mychomp($hse['busnr']);
+                        }
+                        if(strlen($hse['appartnr'])) {
+                            $hse['appartnr']=$this->mychomp($hse['appartnr']);
+                        }
+                        $this->logtrace(5, sprintf("[%s] - Natural sorting housenumbers.",__METHOD__));
+                        $this->logtrace(5, sprintf("[%s] - Prune identical multi value.",__METHOD__));
 
-                    foreach($hse as $item => $numbers) {
-                        $temp_array = explode(";", $numbers);
-                        natsort($temp_array);
-                        $temp_array=$this->superfast_array_unique($temp_array);
-                        if (count($temp_array)>1) {
-                            if (!isset($this->counters['counter_flattened_'.$item])){
-                                $this->counters['counter_flattened_'.$item]=0;
+                        foreach($hse as $item => $numbers) {
+                            $temp_array = explode(";", $numbers);
+                            natsort($temp_array);
+                            $temp_array=$this->superfast_array_unique($temp_array);
+                            if (count($temp_array)>1) {
+                                if (!isset($this->counters['counter_flattened_'.$item])){
+                                    $this->counters['counter_flattened_'.$item]=0;
+                                }
+                                $this->counters['counter_flattened_'.$item]++;
                             }
-                            $this->counters['counter_flattened_'.$item]++;
+                            $hse[$item] = implode(";", $temp_array);
                         }
-                        $hse[$item] = implode(";", $temp_array);
-                    }
-                    // $this->logtrace(3, sprintf("[%s] - Printing debug.",__METHOD__));
-                    // print_r($hse);exit;
-                    if (count($temp_array) >= 7) {
-                        print_r($hse);exit;
-                    }
+                        // $this->logtrace(3, sprintf("[%s] - Printing debug.",__METHOD__));
+                        // print_r($hse);exit;
+                        if (count($temp_array) >= 7) {
+                            print_r($hse);exit;
+                        }
 
-                    $addresses[$k] = $hse;
+                        $addresses[$k] = $hse;
+                    }
+                } else {
+                    $addresses[$k] = array_pop($v);
                 }
-            } else {
-                $addresses[$k] = array_pop($v);
+            }
+        }elseif ($this->mode=="picc") {
+            foreach ($addresses as $k => $v) {
+                if (is_array($v) && count($v)> 1) {
+                    $this->logtrace(5, sprintf("[%s] - Multi records found for building.",__METHOD__));
+                    $streetname = null;
+
+                    $hse = array (
+                        'huisnr' => '',
+                        'straatnm' => ''
+                    );
+
+                    foreach ($v as $building => $address) {
+                        if (empty($streetname)) {
+                            if (empty($address['straatnm'])) {
+                                unset($addresses[$k]);
+                                unset($hse);
+                                $this->counters['empty_street_deleted']++;
+                                break;
+                            } else {
+                                $streetname = $address['straatnm'];
+                                $hse['straatnm'].=trim($address['straatnm']);
+                            }
+                        } elseif ( strcmp($streetname, $address['straatnm']) !== 0) {
+                            // We have 2 streetnames for the same building, this is hard to fix on the building 
+                            // ( entrances could be a solution), we should skip doing these automatically
+                            unset($addresses[$k]);
+                            unset($hse);
+                            $this->counters['double_street_oids'][]=$k;
+                            $this->counters['multi_street_deleted']++;
+                            break;
+                        }
+                        if (!empty($address['huisnr']) && $address['huisnr']!=='nvt') {
+                            $hse['huisnr'].=$address['huisnr'].';';
+                            $this->counters['merged_huisnr']++;
+                        }
+                    }
+                    if(!empty($hse)) {
+                        // print_r($hse);
+
+                        $this->logtrace(5, sprintf("[%s] - Cleaning trailing ';'.",__METHOD__));
+                        if(strlen($hse['huisnr'])) {
+                            $hse['huisnr']=$this->mychomp($hse['huisnr']);
+                        }
+                        $this->logtrace(5, sprintf("[%s] - Natural sorting housenumbers.",__METHOD__));
+                        $this->logtrace(5, sprintf("[%s] - Prune identical multi value.",__METHOD__));
+
+                        foreach($hse as $item => $numbers) {
+                            $temp_array = explode(";", $numbers);
+                            natsort($temp_array);
+                            $temp_array=$this->superfast_array_unique($temp_array);
+                            if (count($temp_array)>1) {
+                                if (!isset($this->counters['counter_flattened_'.$item])){
+                                    $this->counters['counter_flattened_'.$item]=0;
+                                }
+                                $this->counters['counter_flattened_'.$item]++;
+                            }
+                            $hse[$item] = implode(";", $temp_array);
+                        }
+                        // $this->logtrace(3, sprintf("[%s] - Printing debug.",__METHOD__));
+                        // print_r($hse);exit;
+                        if (count($temp_array) >= 7) {
+                            print_r($hse);exit;
+                        }
+
+                        $addresses[$k] = $hse;
+                    }
+                } else {
+                    $addresses[$k] = array_pop($v);
+                }
             }
         }
         $this->logtrace(3, sprintf("[%s] - Flattened multiple records on oid.",__METHOD__));
