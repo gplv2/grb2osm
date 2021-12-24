@@ -817,8 +817,7 @@ class OsmTool {
                     $result = pg_query($query); 
                     if(pg_affected_rows ( $result )) {
                         $this->counters['search_picc_ref_deleted']+=pg_affected_rows( $result );
-                            $this->logtrace(4, sprintf("[%s] - QRY: %s",__METHOD__, $query));
-                        }
+                        $this->logtrace(4, sprintf("[%s] - QRY: %s",__METHOD__, $query));
                     }
                     //print_r($rows);
                     //exit;
