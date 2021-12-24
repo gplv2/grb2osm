@@ -33,6 +33,12 @@ $cliargs = array(
          'description' => "The name of the target .osm (xml) output file",
          'default' => 'database'
          ),
+      'queryfile' => array(
+         'short' => 'q',
+         'type' => 'optional',
+         'description' => "File to save the update queries to so we can process locally then execute on the production database later",
+         'default' => ''
+         ),
       'picc' => array(
          'short' => 'p',
          'type' => 'switch',
@@ -53,6 +59,7 @@ $options = cliargs_get_options($cliargs);
 if (isset($options['file'])) { $target_file  = trim($options['file']); } else { unset($target_file); }
 if (isset($options['osmfile'])) { $osm_file  = trim($options['osmfile']); } else { unset($osm_file); }
 if (isset($options['outfile'])) { $out_file  = trim($options['outfile']); } else { unset($out_file); }
+if (isset($options['queryfile'])) { $query_file  = trim($options['queryfile']); } else { unset($query_file); }
 if (isset($options['picc'])) { $picc_mode  = true ; } else { $picc_mode = false ; }
 
 // Some harcoded defaults
@@ -71,6 +78,12 @@ if (isset($db)) { $options['db']  = trim($db); } else { unset($options['db']); }
 if (empty($target_file)) {
     cliargs_print_usage_and_exit($cliargs);
     exit;
+}
+
+if (isset($query_file) && !empty($query_file)) {
+    if (file_exists($query_file) {
+        unlink($query_file);
+    }
 }
 
 $osmtool = new OsmTool($options);
@@ -134,8 +147,10 @@ if (isset($options['outfile']) && $options['outfile']=='database' && !$picc_mode
          $update=$osmtool->mychomp($update);
 
          $query=sprintf("UPDATE planet_osm_polygon SET %s WHERE (\"source:geometry:oidn\" = '%s' AND \"source:geometry:entity\" = '%s') OR \"source:geometry:ref\" = '%s/%s' ",$update,pg_escape_string($oidn),pg_escape_string($entity),pg_escape_string($entity),pg_escape_string($oidn));
-         //  UPDATE planet_osm_polygon SET "addr:housenumber" = 'Smissestraat'  WHERE "source:geometry:oidn" = '6433';
-         //echo $query.PHP_EOL;
+        // save to file
+         if (isset($this->settings['queryfile']) && !empty($this->settings['queryfile'])) {
+            file_put_contents ( $this->settings['queryfile'] , $query );
+         }
          $osmtool->counters['update_to_db']++;
          $result = pg_query($query); 
          if(pg_affected_rows ( $result )) {
@@ -749,8 +764,8 @@ class OsmTool {
 
             $query="SELECT osm_id FROM planet_osm_polygon WHERE ST_Contains( way, ST_Transform(ST_GeomFromText($1, 31370), 900913)) AND building IS NOT NULL AND (" . pg_escape_identifier('source:geometry:entity') . " NOT IN ('Gbg','Knw','Gba') OR " . pg_escape_identifier('source:geometry:entity') . " IS NULL) ORDER BY " . pg_escape_identifier('source:geometry:date') . " DESC";
 
-	    // Prepare a query for execution
-	    $prepared_name="picc_search";
+        // Prepare a query for execution
+        $prepared_name="picc_search";
 
             if (!pg_prepare($pcon, $prepared_name, $query)){
                 $this->logtrace(0, sprintf("[%s] - Cannot prepare query.",__METHOD__));
@@ -1061,15 +1076,15 @@ class OsmTool {
                 }
             }
         }
-	$this->logtrace(3, sprintf("[%s] - Purged 'nvt' values .",__METHOD__));
+    $this->logtrace(3, sprintf("[%s] - Purged 'nvt' values .",__METHOD__));
 
-	if ($this->mode=="picc") {
-		$sql = sprintf( 'DEALLOCATE "%s"', pg_escape_string($prepared_name)
-		);
-		if(!pg_query($sql)) {
-			$this->logtrace(3, sprintf("[%s] - Deallocated prepared statement.",__METHOD__));
-		}
-	}
+    if ($this->mode=="picc") {
+        $sql = sprintf( 'DEALLOCATE "%s"', pg_escape_string($prepared_name)
+        );
+        if(!pg_query($sql)) {
+            $this->logtrace(3, sprintf("[%s] - Deallocated prepared statement.",__METHOD__));
+        }
+    }
 
         return($addresses);
     }
