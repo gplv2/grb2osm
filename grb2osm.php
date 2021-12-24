@@ -81,7 +81,7 @@ if (empty($target_file)) {
 }
 
 if (isset($query_file) && !empty($query_file)) {
-    if (file_exists($query_file) {
+    if (file_exists($query_file)) {
         unlink($query_file);
     }
 }
