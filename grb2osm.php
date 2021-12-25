@@ -261,6 +261,9 @@ if (isset($options['outfile']) && $options['outfile']=='database' && $picc_mode)
 
          $query=sprintf("UPDATE planet_osm_polygon SET %s WHERE osm_id = '%d' ",$update,pg_escape_string($oidn));
          //echo $query.PHP_EOL;
+         if (isset($this->settings['queryfile']) && !empty($this->settings['queryfile'])) {
+            file_put_contents ( $this->settings['queryfile'] , $query );
+         }
          $osmtool->counters['update_to_db']++;
          $result = pg_query($query); 
          if(pg_affected_rows ( $result )) {
