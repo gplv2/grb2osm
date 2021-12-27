@@ -44,6 +44,11 @@ $cliargs = array(
          'type' => 'switch',
          'description' => "Switch for parsing PICC address data which is different from grb"
          ),
+      'urbis' => array(
+         'short' => 'u',
+         'type' => 'switch',
+         'description' => "Switch for parsing URBIS address data which is different from grb"
+         ),
       'debug' => array(
          'short' => 'd',
          'type' => 'optional',
@@ -61,6 +66,7 @@ if (isset($options['osmfile'])) { $osm_file  = trim($options['osmfile']); } else
 if (isset($options['outfile'])) { $out_file  = trim($options['outfile']); } else { unset($out_file); }
 if (isset($options['queryfile'])) { $query_file  = trim($options['queryfile']); } else { unset($query_file); }
 if (isset($options['picc'])) { $picc_mode  = true ; } else { $picc_mode = false ; }
+if (isset($options['urbis'])) { $urbis_mode  = true ; } else { $urbis_mode = false ; }
 
 // Some harcoded defaults
 $host = "127.0.0.1"; 
@@ -92,7 +98,7 @@ $osmtool->logtrace(2, sprintf("[%s] Opening DB file(s) %s","MAIN",$target_file))
 $osmtool->init_dbf($target_file);
 
 // GRB portion
-if (isset($options['outfile']) && $options['outfile']=='database' && !$picc_mode) {
+if (isset($options['outfile']) && $options['outfile']=='database' && !$picc_mode && !$urbis_mode) {
 
    $con = pg_connect("host=$host port=$port dbname=$db user=$user password=$pass") or die ("Could not connect to server\n"); 
 
@@ -217,7 +223,7 @@ exit;
 }
 
 // PICC address processing
-if (isset($options['outfile']) && $options['outfile']=='database' && $picc_mode) {
+if (isset($options['outfile']) && $options['outfile']=='database' && $picc_mode && !$urbis_mode) {
 
    $con = pg_connect("host=$host port=$port dbname=$db user=$user password=$pass") or die ("Could not connect to server\n"); 
 
@@ -328,6 +334,67 @@ exit;
       }
    }
    exit;
+}
+
+if (isset($options['outfile']) && $options['outfile']=='database' && !$picc_mode && $urbis_mode) {
+
+   $con = pg_connect("host=$host port=$port dbname=$db user=$user password=$pass") or die ("Could not connect to server\n"); 
+
+   $adcounter=0;
+
+   foreach($osmtool->get_all_oidn_address() as $entity_oidn => $val) {
+      list($entity, $oidn) = preg_split('/_/', $entity_oidn, -1, PREG_SPLIT_NO_EMPTY);
+
+      $range_update=false;
+      $adcounter++;
+      // print_r($val);
+      $update="";
+
+      $blah = array();
+
+      $tag='huisnr';
+      if(key_exists($tag, $val) && strlen($val[$tag])) {
+         //$osmtool->counters['counter_exist_housenumber']++;
+         $blah['addr:housenumber']=$osmtool->number2range(trim($val[$tag]));
+         // $osmtool->logtrace(3, sprintf("[%s] - House Range: %s ",__METHOD__, $blah['addr:housenumber']));
+         $pos = strpos($blah['addr:housenumber'], ';');
+         if ($pos !== false) {
+            $range_update=true;
+         }
+      }
+
+      $tag='straatnm';
+      if(key_exists($tag, $val) && strlen($val[$tag])) {
+         //$osmtool->counters['counter_exist_street']++;
+         $blah['addr:street']=trim($val[$tag]);
+      }
+
+      if($range_update || 1==1) {
+         foreach ($blah as $key => $set) {
+            $osmtool->logtrace(6, sprintf("[%s] blah[%s] = %s",__METHOD__,$key,$set));
+             $set = ltrim($set, ';');
+             $set = rtrim($set, ';');
+            $update.=sprintf("\"%s\" = '%s' ,", pg_escape_string($key), pg_escape_string($set));
+         }
+         $update=$osmtool->mychomp($update);
+
+         $query=sprintf("UPDATE planet_osm_polygon SET %s WHERE osm_id = '%d' ",$update,pg_escape_string($oidn));
+         //echo $query.PHP_EOL;
+         if (isset($this->settings['queryfile']) && !empty($this->settings['queryfile'])) {
+            file_put_contents ( $this->settings['queryfile'] , $query );
+         }
+         $osmtool->counters['update_to_db']++;
+         $result = pg_query($query); 
+         if(pg_affected_rows ( $result )) {
+            $osmtool->counters['updated_in_db']+=pg_affected_rows ( $result );
+            if($adcounter % 5000 === 0 ) {
+               $osmtool->logtrace(3, sprintf("[%s] - Updated %d records in DB ...",__METHOD__, $osmtool->counters['updated_in_db']));
+               $osmtool->logtrace(4, sprintf("[%s] - QRY: %s",__METHOD__, $query));
+            }
+         }
+      }
+   }
+exit;
 }
 
 
@@ -733,7 +800,11 @@ class OsmTool {
         }
 
         //$this->db = new Table(dirname(__FILE__). '/' . $database, null, 'CP1252');
-        $this->db = new TableReader($database, ['encoding' => 'CP1252']);
+        if ($urbis_mode) {
+            $this->db = new TableReader($database, ['encoding' => 'UTF-8']);
+        } else {
+            $this->db = new TableReader($database, ['encoding' => 'CP1252']);
+        }
 
         if (!$this->db) {
             $this->logtrace(0, sprintf("[%s] - Problem opening DB %s",__METHOD__,$database));
@@ -767,8 +838,25 @@ class OsmTool {
 
             $query="SELECT osm_id FROM planet_osm_polygon WHERE ST_Contains( way, ST_Transform(ST_GeomFromText($1, 31370), 900913)) AND building IS NOT NULL AND (" . pg_escape_identifier('source:geometry:entity') . " NOT IN ('Gbg','Knw','Gba') OR " . pg_escape_identifier('source:geometry:entity') . " IS NULL) ORDER BY " . pg_escape_identifier('source:geometry:date') . " DESC";
 
-        // Prepare a query for execution
-        $prepared_name="picc_search";
+            // Prepare a query for execution
+            $prepared_name="picc_search";
+
+            if (!pg_prepare($pcon, $prepared_name, $query)){
+                $this->logtrace(0, sprintf("[%s] - Cannot prepare query.",__METHOD__));
+                exit;
+            }
+            //print_r ($cols); exit;
+        }
+
+        if ($this->mode=="urbis") {
+            $this->logtrace(1, sprintf("[%s] - Opening DB connection",__METHOD__));
+            $conn_string = sprintf("host=%s port=%d dbname=%s user=%s password=%s", $this->settings['host'], $this->settings['port'], $this->settings['db'], $this->settings['user'], $this->settings['pass']);
+            $pcon = pg_connect($conn_string) or die ("Could not connect to server\n"); 
+
+            $query="SELECT osm_id FROM planet_osm_polygon WHERE ST_Contains( way, ST_Transform(ST_GeomFromText($1, 31370), 900913)) AND building IS NOT NULL AND (" . pg_escape_identifier('source:geometry:entity') . " NOT IN ('Gbg','Knw','Gba') OR " . pg_escape_identifier('source:geometry:entity') . " IS NULL) ORDER BY " . pg_escape_identifier('source:geometry:date') . " DESC";
+
+            // Prepare a query for execution
+            $prepared_name="urbis_search";
 
             if (!pg_prepare($pcon, $prepared_name, $query)){
                 $this->logtrace(0, sprintf("[%s] - Cannot prepare query.",__METHOD__));
@@ -861,7 +949,12 @@ class OsmTool {
                     $this->counters['address_records']++;
                     $addresses[$entity.'_'.$osm_id][] = array( 'huisnr' => $record->numero, 'straatnm'=> $record->rue_nom);
                 }
-
+            } elseif ($this->mode=="urbis") {
+                $entity='Urbis';{
+                    $addresses[$entity.'_'.$record->bu_id][] = array( 'huisnr' => $record->huisnr, 'straatnm'=> sprintf("%s - %s",$record->pn_name_fr, $record->pn_name_du));
+                    $this->counters['urbis_addressrecords']++;
+                }
+                $this->counters['address_records']++;
             } elseif ($this->mode=="default") {
 
                 if(isset($cols['gbgoidn'])) {
