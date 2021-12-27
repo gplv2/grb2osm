@@ -93,17 +93,36 @@ if (isset($query_file) && !empty($query_file)) {
         unlink($query_file);
     }
 }
+if(!empty($options)) {
+    if(isset($options['picc'])) {
+        $mode='picc';
+    } elseif(isset($options['urbis'])) {
+        $mode='urbis';
+    } else {
+        $mode='default';
+    }
+}
 
 $osmtool = new OsmTool($options);
 $osmtool->logtrace(2, sprintf("[%s] %s","MAIN","Init"));
-$osmtool->logtrace(2, sprintf("[%s] Opening DB file(s) %s","MAIN",$target_file));
+if (isset($target_file)) {
+    $osmtool->logtrace(2, sprintf("[%s] Opening DB file(s) %s","MAIN",$target_file));
+} else {
+    if ($mode == 'picc' || $mode == 'default'){
+        $osmtool->logtrace(0, sprintf("[%s] We need a dbf input file for mode %s","MAIN",$mode));
+        cliargs_print_usage_and_exit($cliargs);
+        exit;
+    }
+}
 
-if (!isset($urbis_mode)) {
+if (isset($urbis_mode)) {
+    $osmtool->init_dbf();
+} else {
     $osmtool->init_dbf($target_file);
 }
 
 // GRB portion
-if (isset($options['outfile']) && $options['outfile']=='database' && !$picc_mode && !$urbis_mode) {
+if (isset($options['outfile']) && $options['outfile']=='database' && $mode=='default') {
 
    $con = pg_connect("host=$host port=$port dbname=$db user=$user password=$pass") or die ("Could not connect to server\n"); 
 
@@ -159,8 +178,8 @@ if (isset($options['outfile']) && $options['outfile']=='database' && !$picc_mode
 
          $query=sprintf("UPDATE planet_osm_polygon SET %s WHERE (\"source:geometry:oidn\" = '%s' AND \"source:geometry:entity\" = '%s') OR \"source:geometry:ref\" = '%s/%s' ",$update,pg_escape_string($oidn),pg_escape_string($entity),pg_escape_string($entity),pg_escape_string($oidn));
         // save to file
-         if (isset($this->settings['queryfile']) && !empty($this->settings['queryfile'])) {
-            file_put_contents ( $this->settings['queryfile'] , $query );
+         if (isset($options['queryfile']) && !empty($options['queryfile'])) {
+            file_put_contents ( $options['queryfile'] , $query );
          }
          $osmtool->counters['update_to_db']++;
          $result = pg_query($query); 
@@ -228,7 +247,7 @@ exit;
 }
 
 // PICC address processing
-if (isset($options['outfile']) && $options['outfile']=='database' && $picc_mode && !$urbis_mode) {
+if (isset($options['outfile']) && $options['outfile']=='database' && $mode=='picc') {
 
    $con = pg_connect("host=$host port=$port dbname=$db user=$user password=$pass") or die ("Could not connect to server\n"); 
 
@@ -272,8 +291,8 @@ if (isset($options['outfile']) && $options['outfile']=='database' && $picc_mode 
 
          $query=sprintf("UPDATE planet_osm_polygon SET %s WHERE osm_id = '%d' ",$update,pg_escape_string($oidn));
          //echo $query.PHP_EOL;
-         if (isset($this->settings['queryfile']) && !empty($this->settings['queryfile'])) {
-            file_put_contents ( $this->settings['queryfile'] , $query );
+         if (isset($options['queryfile']) && !empty($options['queryfile'])) {
+            file_put_contents ( $options['queryfile'] , $query );
          }
          $osmtool->counters['update_to_db']++;
          $result = pg_query($query); 
@@ -341,11 +360,13 @@ exit;
    exit;
 }
 
-if (isset($options['outfile']) && $options['outfile']=='database' && !$picc_mode && $urbis_mode) {
+if (isset($options['outfile']) && $options['outfile']=='database' && $mode=='urbis') {
 
    $cond = pg_connect("host=$host port=$port dbname=$db user=$user password=$pass") or die ("Could not connect to server\n"); 
 
    $adcounter=0;
+   //print_r($osmtool->get_all_oidn_address());
+   //exit;
 
    foreach($osmtool->get_all_oidn_address() as $entity_oidn => $val) {
       list($entity, $oidn) = preg_split('/_/', $entity_oidn, -1, PREG_SPLIT_NO_EMPTY);
@@ -373,6 +394,16 @@ if (isset($options['outfile']) && $options['outfile']=='database' && !$picc_mode
          //$osmtool->counters['counter_exist_street']++;
          $blah['addr:street']=trim($val[$tag]);
       }
+      $tag='straat_nl';
+      if(key_exists($tag, $val) && strlen($val[$tag])) {
+         //$osmtool->counters['counter_exist_street']++;
+         $blah['addr:street:nl']=trim($val[$tag]);
+      }
+      $tag='straat_fr';
+      if(key_exists($tag, $val) && strlen($val[$tag])) {
+         //$osmtool->counters['counter_exist_street']++;
+         $blah['addr:street:fr']=trim($val[$tag]);
+      }
 
       if($range_update || 1==1) {
          foreach ($blah as $key => $set) {
@@ -383,10 +414,10 @@ if (isset($options['outfile']) && $options['outfile']=='database' && !$picc_mode
          }
          $update=$osmtool->mychomp($update);
 
-         $query=sprintf("UPDATE planet_osm_polygon SET %s WHERE osm_id = '%d' ",$update,pg_escape_string($oidn));
-         //echo $query.PHP_EOL;
-         if (isset($this->settings['queryfile']) && !empty($this->settings['queryfile'])) {
-            file_put_contents ( $this->settings['queryfile'] , $query );
+         $query=sprintf("UPDATE planet_osm_polygon SET %s WHERE (\"source:geometry:oidn\" = %d' AND \"source:geometry:entity\" = '%s') OR \"source:geometry:ref\" = '%s/%s' ",$update,pg_escape_string($oidn),pg_escape_string($entity),pg_escape_string($entity),pg_escape_string($oidn));
+         echo $query.PHP_EOL; exit;
+         if (isset($options['queryfile']) && !empty($options['queryfile'])) {
+            file_put_contents ( $options['queryfile'] , $query );
          }
          $osmtool->counters['update_to_db']++;
          $result = pg_query($query); 
@@ -734,23 +765,32 @@ class OsmTool {
     public function __construct($settings=null) {
         if(!empty($settings)) {
             $this->settings=$settings;
+            if(isset($settings['picc'])) {
+                $this->mode='picc';
+            } elseif(isset($settings['urbis'])) {
+                $this->mode='urbis';
+            } else {
+                $this->mode='default';
+            }
+            if (defined('STDIN')) {
+                $this->eol="\n";
+            } else {
+                $this->eol="<BR/>";
+            }
         }
-        if($settings['picc']) {
-            $this->mode='picc';
-        }
-        if (defined('STDIN')) {
-            $this->eol="\n";
-        } else {
-            $this->eol="<BR/>";
-        }
+        //var_dump($this->mode); exit;
     }
 
     public function init_dbf() {
-        $target_files = explode(',', $this->settings['file']);
-        foreach($target_files as $k => $file) {
-            //$this->addresses=$this->open_db($file);
-            $this->addresses=array_replace($this->open_db($file), $this->addresses);
-            // break;
+        if ($this->mode=='urbis') {
+            $this->addresses=$this->open_db();
+        } else {
+            $target_files = explode(',', $this->settings['file']);
+            foreach($target_files as $k => $file) {
+                //$this->addresses=$this->open_db($file);
+                $this->addresses=array_replace($this->open_db($file), $this->addresses);
+                // break;
+            }
         }
         // print_r($this->addresses); exit;
     }
@@ -779,13 +819,12 @@ class OsmTool {
       }
     }
 
-    private function open_db($database)  {
+    private function open_db($database = null)  {
         $this->logtrace(3, sprintf("[%s] - Start",__METHOD__));
         $return = 0;
 
-        $this->logtrace(2, sprintf("[%s] - Trying to open DBase DB %s",__METHOD__,$database));
-
-        if ($this->mode=="default") {
+        if ($this->mode=="default" || $this->mode=="picc") {
+            $this->logtrace(2, sprintf("[%s] - Trying to open DBase DB %s",__METHOD__,$database));
             /* Extract the entity as oidn col turns out to be unique only within the same entity */
             $base = basename($database, ".dbf");
             if (preg_match('/^Tbl(\w{3})Adr.*/',$base,$matches)) {
@@ -801,14 +840,14 @@ class OsmTool {
 
         } elseif ($this->mode=="urbis") {
             $entity='Urbis'; 
-        } elseif ($this->mode=="picc") {
+        } 
+
+        if ($this->mode=="picc") {
             $entity='Picc'; 
         }
 
         //$this->db = new Table(dirname(__FILE__). '/' . $database, null, 'CP1252');
-        if ($urbis_mode) {
-            
-        } else {
+        if ($this->mode!='urbis') {
             $this->db = new TableReader($database, ['encoding' => 'CP1252']);
             if (!$this->db) {
                 $this->logtrace(0, sprintf("[%s] - Problem opening DB %s",__METHOD__,$database));
@@ -832,7 +871,7 @@ class OsmTool {
 
         // Find back the building, use osm_id as unique ref for multiple nr support
         //$query=sprintf("SELECT osm_id FROM planet_osm_polygon WHERE ST_Contains( way, ST_Transform(ST_GeomFromText('POINT(%d %d)', 31370), 900913)) AND building IS NOT NULL",pg_escape_string($x),pg_escape_string($y));
-        
+
         // the_query
 
         //print_r($this->settings);
@@ -858,7 +897,7 @@ class OsmTool {
             $conn_string = sprintf("host=%s port=%d dbname=%s user=%s password=%s", $this->settings['host'], $this->settings['port'], $this->settings['db_urbis'], $this->settings['user'], $this->settings['pass']);
             $pcon = pg_connect($conn_string) or die ("Could not connect to server\n"); 
 
-            $query="SELECT PN.bu_id AS id, adpn AS huisnr, concat_ws(' - ',name_fre,name_dut) AS street, name_fre AS street_fr, name_dut AS street_nl FROM urb_a_adpn PN JOIN urb_a_adpt PT ON PN.adpt_id=PT.id JOIN urb_a_pn P ON PN.pn_id =P.id WHERE upper(PN.adpn) = upper(PT.adrn) AND PT.bu_id IS NOT NULL ORDER BY PT.bu_id";
+            $query="SELECT PT.bu_id AS id, adpn AS huisnr, concat_ws(' - ',name_fre,name_dut) AS street, name_fre AS street_fr, name_dut AS street_nl FROM urb_a_adpn PN JOIN urb_a_adpt PT ON PN.adpt_id=PT.id JOIN urb_a_pn P ON PN.pn_id =P.id WHERE upper(PN.adpn) = upper(PT.adrn) AND PT.bu_id IS NOT NULL ORDER BY PT.bu_id";
             // Prepare a query for execution
             $prepared_name="urbis_search";
 
@@ -868,14 +907,14 @@ class OsmTool {
             }
             $this->logtrace(3, sprintf("[%s] - Reading urbis records...",__METHOD__));
             $entity='Urbis';
-            $results = pg_execute($pcon, "picc_search", array($the_geom));
+            $results = pg_execute($pcon, $prepared_name,array());
             $num_results=pg_num_rows($results);
             $this->counters['urbis_addressrecords']=$num_results;
             if ($num_results > 0) {
                 $this->logtrace(3, sprintf("[%s] - Found %d housnumbers ...",__METHOD__, $num_results));
-                //$rows = pg_fetch_all($results);
-                while ($row = pg_fetch_assoc($result)) {
-                    $addresses[$entity.'_'.$row->bu_id][] = array( 'huisnr' => $row->huisnr, 'straatnm'=> $row->street, 'straat_nl' => $row->street_nl, 'straat_fr' => $row->street_fr);
+                while ($row = pg_fetch_assoc($results)) {
+                    $addresses[$entity.'_'.$row['id']][] = array( 'huisnr' => $row['huisnr'], 'straatnm'=> $row['street'], 'straat_nl' => $row['street_nl'], 'straat_fr' => $row['street_fr']);
+                    //print_r($row);exit;
                 }
             }
             $this->logtrace(3, sprintf("[%s] - Done searching for urbis records...",__METHOD__));
@@ -908,7 +947,7 @@ class OsmTool {
 
                     // Execute the prepared query
                     $the_geom =sprintf("POINT(%s %s)", $record->x, $record->y);
-                    $results = pg_execute($pcon, "picc_search", array($the_geom));
+                    $results = pg_execute($pcon, $prepared_name, array($the_geom));
                     $num_results=pg_num_rows($results);
 
                     if($this->counters['search_picc_ref_in_db'] % 5000 === 0 ) {
@@ -968,12 +1007,6 @@ class OsmTool {
                         $this->counters['address_records']++;
                         $addresses[$entity.'_'.$osm_id][] = array( 'huisnr' => $record->numero, 'straatnm'=> $record->rue_nom);
                     }
-                } elseif ($this->mode=="urbis") {
-                    $entity='Urbis';{
-                    $addresses[$entity.'_'.$record->bu_id][] = array( 'huisnr' => $record->huisnr, 'straatnm'=> sprintf("%s - %s",$record->pn_name_fr, $record->pn_name_du));
-                    $this->counters['urbis_addressrecords']++;
-                }
-                    $this->counters['address_records']++;
                 } elseif ($this->mode=="default") {
 
                     if(isset($cols['gbgoidn'])) {
@@ -992,10 +1025,11 @@ class OsmTool {
                 }
             }
         }
+        // Out of dbf loop
 
         if ($this->mode=="default") {
             if ($this->counters['knw_addressrecords'] + $this->counters['adp_addressrecords'] + $this->counters['gbg_addressrecords'] <= 0 ) {
-                $this->logtrace(3, sprintf("[%s] - No addresses loaded at all, pointless to continue.",__METHOD__));
+                $this->logtrace(3, sprintf("[%s] - No grb addresses loaded at all, pointless to continue.",__METHOD__));
                 print_r($cols);
                 $this->logtrace(3, sprintf("[%s] - tip: mod the code to find the correct colname from the list above.",__METHOD__));
                 exit;
@@ -1009,7 +1043,7 @@ class OsmTool {
 
         } elseif ($this->mode=="picc") {
             if ($this->counters['picc_addressrecords'] <= 0 ) {
-                $this->logtrace(3, sprintf("[%s] - No addresses loaded at all, pointless to continue.",__METHOD__));
+                $this->logtrace(3, sprintf("[%s] - No picc addresses loaded at all, pointless to continue.",__METHOD__));
                 //print_r($cols);
                 //$this->logtrace(3, sprintf("[%s] - tip: mod the code to find the correct colname from the list above.",__METHOD__));
                 exit;
@@ -1108,7 +1142,7 @@ class OsmTool {
                     $addresses[$k] = array_pop($v);
                 }
             }
-        }elseif ($this->mode=="picc") {
+        } elseif ($this->mode=="picc") {
             foreach ($addresses as $k => $v) {
                 if (is_array($v) && count($v)> 1) {
                     $this->logtrace(5, sprintf("[%s] - Multi records found for building.",__METHOD__));
@@ -1178,7 +1212,80 @@ class OsmTool {
                     $addresses[$k] = array_pop($v);
                 }
             }
+        } elseif ($this->mode=="urbis") {
+            foreach ($addresses as $k => $v) {
+                if (is_array($v) && count($v)> 1) {
+                    $this->logtrace(5, sprintf("[%s] - Multi records found for building.",__METHOD__));
+                    $streetname = null;
+
+                    $hse = array (
+                        'huisnr' => '',
+                        'straatnm' => '',
+                        'straat_nl' => '',
+                        'straat_fr' => ''
+                    );
+
+                    foreach ($v as $building => $address) {
+                        if (empty($streetname)) {
+                            if (empty($address['straatnm'])) {
+                                unset($addresses[$k]);
+                                unset($hse);
+                                $this->counters['empty_street_deleted']++;
+                                break;
+                            } else {
+                                $streetname = $address['straatnm'];
+                                $hse['straatnm'].=trim($address['straatnm']);
+                            }
+                        } elseif ( strcmp($streetname, $address['straatnm']) !== 0) {
+                            // We have 2 streetnames for the same building, this is hard to fix on the building 
+                            // ( entrances could be a solution), we should skip doing these automatically
+                            unset($addresses[$k]);
+                            unset($hse);
+                            $this->counters['double_street_oids'][]=$k;
+                            $this->counters['multi_street_deleted']++;
+                            break;
+                        }
+                        if (!empty($address['huisnr']) && $address['huisnr']!=='nvt') {
+                            $hse['huisnr'].=$address['huisnr'].';';
+                            $this->counters['merged_huisnr']++;
+                        }
+                    }
+                    if(!empty($hse)) {
+                        // print_r($hse);
+
+                        $this->logtrace(5, sprintf("[%s] - Cleaning trailing ';'.",__METHOD__));
+                        if(strlen($hse['huisnr'])) {
+                            $hse['huisnr']=$this->mychomp($hse['huisnr']);
+                        }
+                        $this->logtrace(5, sprintf("[%s] - Natural sorting housenumbers.",__METHOD__));
+                        $this->logtrace(5, sprintf("[%s] - Prune identical multi value.",__METHOD__));
+
+                        foreach($hse as $item => $numbers) {
+                            $temp_array = explode(";", $numbers);
+                            natsort($temp_array);
+                            $temp_array=$this->superfast_array_unique($temp_array);
+                            if (count($temp_array)>1) {
+                                if (!isset($this->counters['counter_flattened_'.$item])){
+                                    $this->counters['counter_flattened_'.$item]=0;
+                                }
+                                $this->counters['counter_flattened_'.$item]++;
+                            }
+                            $hse[$item] = implode(";", $temp_array);
+                        }
+                        // $this->logtrace(3, sprintf("[%s] - Printing debug.",__METHOD__));
+                        // print_r($hse);exit;
+                        if (count($temp_array) >= 7) {
+                            print_r($hse);exit;
+                        }
+
+                        $addresses[$k] = $hse;
+                    }
+                } else {
+                    $addresses[$k] = array_pop($v);
+                }
+            }
         }
+        $this->logtrace(3, sprintf("[%s] - Flattened multiple records on oid.",__METHOD__));
         $this->logtrace(3, sprintf("[%s] - Flattened multiple records on oid.",__METHOD__));
 
         $this->logtrace(3, sprintf("[%s] - Cleaning up...",__METHOD__));
@@ -1192,15 +1299,17 @@ class OsmTool {
                 }
             }
         }
-    $this->logtrace(3, sprintf("[%s] - Purged 'nvt' values .",__METHOD__));
+        $this->logtrace(3, sprintf("[%s] - Purged 'nvt' values .",__METHOD__));
 
-    if ($this->mode=="picc") {
-        $sql = sprintf( 'DEALLOCATE "%s"', pg_escape_string($prepared_name)
-        );
-        if(!pg_query($sql)) {
-            $this->logtrace(3, sprintf("[%s] - Deallocated prepared statement.",__METHOD__));
+        /*
+        if ($this->mode=="picc" || $this->mode=="urbis") {
+            $sql = sprintf( 'DEALLOCATE "%s"', pg_escape_string($prepared_name)
+            );
+            if(!pg_query($sql)) {
+                $this->logtrace(3, sprintf("[%s] - Deallocated prepared statement.",__METHOD__));
+            }
         }
-    }
+         */
 
         return($addresses);
     }
