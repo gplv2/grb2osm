@@ -70,7 +70,7 @@ if (isset($options['urbis'])) { $urbis_mode  = true ; } else { $urbis_mode = fal
 
 // Some harcoded defaults
 $host = "127.0.0.1"; 
-$port = 5434;
+$port = 5432;
 $user = "grb-data"; 
 $pass = "str0ngDBp4ssw0rd"; 
 $db   = "grb_api"; 
@@ -414,8 +414,8 @@ if (isset($options['outfile']) && $options['outfile']=='database' && $mode=='urb
          }
          $update=$osmtool->mychomp($update);
 
-         $query=sprintf("UPDATE planet_osm_polygon SET %s WHERE (\"source:geometry:oidn\" = %d' AND \"source:geometry:entity\" = '%s') OR \"source:geometry:ref\" = '%s/%s' ",$update,pg_escape_string($oidn),pg_escape_string($entity),pg_escape_string($entity),pg_escape_string($oidn));
-         echo $query.PHP_EOL; exit;
+         $query=sprintf("UPDATE planet_osm_polygon SET %s WHERE (\"source:geometry:oidn\" = '%s' AND \"source:geometry:entity\" = '%s') OR \"source:geometry:ref\" = '%s/%s' ",$update,pg_escape_string($oidn),pg_escape_string($entity),pg_escape_string($entity),pg_escape_string($oidn));
+         //echo $query.PHP_EOL; exit;
          if (isset($options['queryfile']) && !empty($options['queryfile'])) {
             file_put_contents ( $options['queryfile'] , $query );
          }
