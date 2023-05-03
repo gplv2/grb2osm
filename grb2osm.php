@@ -893,6 +893,14 @@ class OsmTool {
             // Prepare a query for execution
             $prepared_name="picc_search";
 
+            // In case it already exists, deallocate it (with multiple files this can happen within the open_db loop)
+            $deallocate_query=sprintf("DEALLOCATE %s", $prepared_name);
+            if (!pg_prepare($pcon, $prepared_name, $deallocate_query)){
+                $this->logtrace(0, sprintf("[%s] - Cannot deallocate prepared statement %s.",__METHOD__,$prepared_name));
+            } else {
+                $this->logtrace(0, sprintf("[%s] - Deallocated prepared statement: %s.",__METHOD__,$prepared_name));
+            }
+
             if (!pg_prepare($pcon, $prepared_name, $query)){
                 $this->logtrace(0, sprintf("[%s] - Cannot prepare query.",__METHOD__));
                 exit;
