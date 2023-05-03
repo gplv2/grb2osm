@@ -180,7 +180,7 @@ if (isset($options['outfile']) && $options['outfile']=='database' && $mode=='def
          $osmtool->logtrace(6, sprintf("[%s] - Query: %s",__METHOD__, $query));
         // save to file
          if (isset($options['queryfile']) && !empty($options['queryfile'])) {
-            file_put_contents ( $options['queryfile'] , $query );
+            file_put_contents ( $options['queryfile'] , $query , FILE_APPEND | LOCK_EX);
          }
          $osmtool->counters['update_to_db']++;
          $result = pg_query($query);
@@ -829,7 +829,7 @@ class OsmTool {
             /* Extract the entity as oidn col turns out to be unique only within the same entity */
             $base = basename($database, ".dbf");
                 $this->logtrace(2, sprintf("[%s] - Base name %s",__METHOD__, $base));
-            if (preg_match('/^Tbl(\w{3})Adr.*|ADRESS_POINT*/',$base,$matches)) {
+            if (preg_match('/^Tbl(\w{3})Adr.*|ADRESS*/',$base,$matches)) {
                 $this->logtrace(2, sprintf("[%s] - Matches found",__METHOD__));
                 print_r($matches);
             }
